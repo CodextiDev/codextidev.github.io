@@ -1,0 +1,1716 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SPRINT-Nav Family — Sonardyne</title>
+<script>
+(function(){
+  try{
+    var saved = localStorage.getItem('sprintnav-theme');
+    var theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', theme);
+  }catch(err){ /* localStorage unavailable — default light applies via CSS */ }
+})();
+</script>
+<link rel="preconnect" href="https://api.fontshare.com">
+<link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=satoshi@900,700,500,400&display=swap">
+<!-- Classic (non-module) three.js build: opening this file directly as
+     file:// blocks ES module imports in Chrome/Firefox, so the 3D tab is
+     built on the global-namespace UMD build instead. -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<style>
+  :root{
+    color-scheme:light;
+    --bg:#ffffff;
+    --ink:#0d0730;
+    --ink-soft:rgba(13,7,48,.62);
+    --ink-faint:rgba(13,7,48,.4);
+    --line:rgba(13,7,48,.12);
+    --accent:#2f6f8f;
+    --accent-soft:rgba(47,111,143,.10);
+    --cyan:#33f3fd;
+    --teal:#4ea39c;
+    --purple:#713795;
+    --purple-soft:rgba(113,55,149,.10);
+    --stage-word-stroke:rgba(13,7,48,.08);
+    --hero-shadow:rgba(13,7,48,.16);
+    --tabbar-bg:rgba(255,255,255,.86);
+    --depth-surface:#ffffff;
+    --depth-mid:#eef6f8;
+    --depth-deep:#dfeef1;
+    --depth-line:rgba(47,111,143,.07);
+    --ease:cubic-bezier(.16,1,.3,1);
+    --ease-in:cubic-bezier(.7,0,.84,0);
+  }
+
+  /* Dark theme — same brand hues (accent teal-blue, cyan, purple), tuned for
+     contrast on a near-black ground instead of remapping to different colors. */
+  :root[data-theme="dark"]{
+    color-scheme:dark;
+    --bg:#070c17;
+    --ink:#f0f2f8;
+    --ink-soft:rgba(240,242,248,.68);
+    --ink-faint:rgba(240,242,248,.44);
+    --line:rgba(240,242,248,.14);
+    --accent:#5cb8db;
+    --accent-soft:rgba(92,184,219,.16);
+    --cyan:#33f3fd;
+    --teal:#6bc9bd;
+    --purple:#b78ad9;
+    --purple-soft:rgba(183,138,217,.18);
+    --stage-word-stroke:rgba(240,242,248,.09);
+    --hero-shadow:rgba(0,0,0,.55);
+    --tabbar-bg:rgba(7,12,23,.82);
+    --depth-surface:#0a1424;
+    --depth-mid:#060a14;
+    --depth-deep:#02050a;
+    --depth-line:rgba(92,184,219,.09);
+  }
+
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ margin:0; padding:0; height:100%; overflow:hidden; }
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Satoshi','Helvetica Neue',sans-serif;
+    height:100vh; height:100dvh;
+    position:relative;
+  }
+  h1,h2,h3{ text-wrap:balance; margin:0; font-family:'Satoshi','Helvetica Neue',sans-serif; }
+  ::selection{ background:var(--accent); color:#fff; }
+  :focus-visible{ outline:2px solid var(--accent); outline-offset:3px; }
+  button{ font-family:inherit; }
+  img{ -webkit-user-drag:none; user-select:none; }
+  p{ margin:0; }
+
+  /* ---------- ambient background: echo-sounder depth profile ---------- */
+  .backdrop{ position:fixed; inset:0; z-index:-1; overflow:hidden; background:var(--bg); }
+  .depth-gradient{
+    position:absolute; inset:0;
+    background:linear-gradient(to bottom, var(--depth-surface) 0%, var(--depth-mid) 58%, var(--depth-deep) 100%);
+  }
+  .depth-lines{
+    position:absolute; inset:0;
+    background-image:repeating-linear-gradient(to bottom, var(--depth-line) 0, var(--depth-line) 1px, transparent 1px, transparent 68px);
+  }
+  .depth-sweep{
+    position:absolute; left:0; right:0; height:140px; top:-140px;
+    background:linear-gradient(to bottom, transparent 0%, var(--depth-line) 45%, transparent 100%);
+    animation:depthSweep 16s linear infinite;
+  }
+  @keyframes depthSweep{ 0%{ transform:translateY(0); } 100%{ transform:translateY(calc(100vh + 140px)); } }
+  .depth-labels{ position:absolute; inset:0; pointer-events:none; }
+  .depth-labels span{
+    position:absolute; left:6px; font-size:.58rem; font-weight:700; letter-spacing:.08em;
+    color:var(--ink-faint); opacity:.2; font-variant-numeric:tabular-nums;
+  }
+  @media (prefers-reduced-motion: reduce){ .depth-sweep{ animation:none; display:none; } }
+
+  .blob{ position:absolute; border-radius:50%; filter:blur(120px); opacity:.14; }
+  .blob-cyan{ width:520px; height:520px; background:var(--cyan); top:-160px; left:-100px; animation:drift1 28s ease-in-out infinite; }
+  .blob-purple{ width:560px; height:560px; background:var(--purple); bottom:-220px; right:-140px; animation:drift2 34s ease-in-out infinite; }
+  .blob-teal{ width:400px; height:400px; background:var(--teal); top:40%; right:6%; opacity:.10; animation:drift1 24s ease-in-out infinite reverse; }
+  @keyframes drift1{ 0%,100%{ transform:translate(0,0); } 50%{ transform:translate(40px,50px); } }
+  @keyframes drift2{ 0%,100%{ transform:translate(0,0); } 50%{ transform:translate(-40px,-40px); } }
+  @media (prefers-reduced-motion: reduce){ .blob{ animation:none; } }
+
+  [hidden]{ display:none !important; }
+
+  /* ================= full-screen overlays (splash / language) ================= */
+  .overlay{
+    position:fixed; inset:0; z-index:100; background:var(--bg);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; padding:24px;
+  }
+  .overlay .logo-mark{ height:54px; width:auto; margin-bottom:46px; pointer-events:none; }
+
+  /* family hero + sonar ping (splash) */
+  .family-sonar{ position:relative; width:clamp(340px,66vw,600px); height:clamp(340px,66vw,600px); display:flex; align-items:center; justify-content:center; margin-bottom:14px; pointer-events:none; }
+  .family-glow{
+    position:absolute; inset:4%; border-radius:50%; z-index:0;
+    background:radial-gradient(circle, var(--cyan) 0%, var(--accent) 45%, transparent 72%);
+    opacity:.3; filter:blur(36px);
+    animation:familyGlowPulse 2.6s ease-in-out infinite;
+  }
+  @keyframes familyGlowPulse{ 0%,100%{ opacity:.2; transform:scale(.94); } 50%{ opacity:.55; transform:scale(1.08); } }
+  .family-ring{
+    position:absolute; width:58%; height:58%; border-radius:50%; z-index:1;
+    border:2px solid var(--cyan);
+    box-shadow:0 0 20px 1px rgba(51,243,253,.4);
+    opacity:0;
+    animation:familyPing 2.8s var(--ease) infinite;
+  }
+  .family-ring:nth-child(2){ animation-delay:.93s; }
+  .family-ring:nth-child(3){ animation-delay:1.87s; }
+  @keyframes familyPing{ 0%{ transform:scale(.5); opacity:.75; } 100%{ transform:scale(2.7); opacity:0; } }
+  .family-hero{
+    position:relative; z-index:2; width:72%; height:72%; object-fit:contain;
+    filter:drop-shadow(0 16px 32px var(--hero-shadow));
+    animation:familyFloat 3.6s ease-in-out infinite;
+  }
+  @keyframes familyFloat{ 0%,100%{ transform:translateY(0) scale(1); } 50%{ transform:translateY(-7px) scale(1.02); } }
+  @media (prefers-reduced-motion: reduce){
+    .family-glow, .family-ring, .family-hero{ animation:none; }
+    .family-ring{ opacity:.2; transform:scale(1.4); }
+  }
+
+  .splash-hint{ margin-top:32px; font-size:.78rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-faint); pointer-events:none; }
+  .splash-hint .pulse{ display:inline-block; animation:hintPulse 1.6s ease-in-out infinite; }
+  @keyframes hintPulse{ 0%,100%{ opacity:.4; transform:scale(1); color:var(--ink-faint); } 50%{ opacity:1; transform:scale(1.06); color:var(--accent); } }
+  .splash-btn{ position:absolute; inset:0; border:none; background:none; cursor:pointer; width:100%; height:100%; }
+
+  .lang-title{ font-weight:900; font-size:clamp(1.6rem,4vw,2.2rem); margin-bottom:34px; }
+  .lang-choices{ display:flex; gap:18px; flex-wrap:wrap; justify-content:center; }
+  .lang-btn{
+    border:1.5px solid var(--line); background:none; color:var(--ink); cursor:pointer;
+    padding:18px 40px; border-radius:999px; font-size:1rem; font-weight:700;
+    transition:border-color .35s var(--ease), background .35s var(--ease), color .35s var(--ease), transform .35s var(--ease);
+  }
+  .lang-btn:hover{ border-color:var(--accent); color:var(--accent); transform:translateY(-2px); }
+
+  /* ================= app shell (fills viewport, no scroll) ================= */
+  #app{ opacity:0; display:flex; flex-direction:column; height:100%; }
+
+  .topbar{
+    flex:none;
+    display:flex; align-items:center; gap:14px; padding:clamp(8px,1.6vh,14px) 22px;
+    border-bottom:1px solid var(--line);
+  }
+  .topbar img.logo{ height:19px; width:auto; flex:none; }
+  .topbar .divider{ width:1px; height:17px; background:var(--line); flex:none; }
+  .topbar h1{ font-weight:900; font-size:clamp(.95rem,1.8vw,1.2rem); letter-spacing:-.01em; }
+  .topbar .lang-toggle{
+    margin-left:auto; display:flex; gap:2px; font-size:.7rem; font-weight:700; letter-spacing:.04em;
+  }
+  .topbar .lang-toggle button{ border:none; background:none; cursor:pointer; padding:4px 8px; color:var(--ink-faint); border-radius:6px; }
+  .topbar .lang-toggle button.active{ color:var(--accent); }
+  .topbar-right{ margin-left:auto; display:flex; align-items:center; gap:12px; }
+  .topbar-right .lang-toggle{ margin-left:0; }
+  .icon-btn{ border:none; background:none; cursor:pointer; color:var(--ink-faint); padding:6px; border-radius:8px; display:flex; align-items:center; justify-content:center; transition:color .25s var(--ease); }
+  .icon-btn:hover{ color:var(--accent); }
+  .icon-btn svg{ width:18px; height:18px; }
+
+  .shell{ flex:1; min-height:0; display:flex; flex-direction:column; max-width:1240px; margin:0 auto; padding:0 22px; width:100%; }
+
+  .lede{ flex:none; max-width:78ch; color:var(--ink-soft); font-size:clamp(.72rem,1.3vh,.86rem); line-height:1.4; padding:clamp(6px,1.2vh,12px) 0 0; }
+
+  .view{ flex:1; min-height:0; display:flex; flex-direction:column; overflow:hidden; justify-content:center; }
+
+  /* ---------- family selector (top) ---------- */
+  .family-top{ flex:none; padding:clamp(6px,1.4vh,14px) 0 2px; }
+  .section-label{ font-size:.68rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-faint); }
+  .filmstrip{
+    display:flex; gap:clamp(16px,2.6vw,34px); overflow-x:auto; margin-top:clamp(4px,1vh,10px); padding:2px 2px clamp(6px,1.2vh,10px);
+    scroll-snap-type:x proximity; -ms-overflow-style:none; scrollbar-width:none;
+  }
+  .filmstrip::-webkit-scrollbar{ display:none; }
+  .film-item{
+    background:none; border:none; padding:0 0 6px; cursor:pointer; flex:none;
+    display:flex; flex-direction:column; align-items:center; gap:5px; width:clamp(46px,5.6vw,62px);
+    opacity:.42; border-bottom:2px solid transparent;
+    transition:opacity .45s var(--ease), border-color .45s var(--ease);
+  }
+  .film-item img{ width:clamp(34px,4.2vw,44px); height:clamp(34px,4.2vw,44px); object-fit:contain; }
+  .film-item .film-label{ font-size:.58rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-faint); white-space:nowrap; transition:color .45s var(--ease); }
+  .film-item:hover{ opacity:.7; }
+  .film-item.active{ opacity:1; border-color:var(--accent); }
+  .film-item.active .film-label{ color:var(--accent); }
+
+  /* ---------- stage: image beside copy, no cards ---------- */
+  .stage-split{
+    flex:1; min-height:0; overflow:hidden;
+    display:grid; grid-template-columns:1fr 1fr; gap:clamp(16px,4vw,48px); align-items:stretch;
+    padding:clamp(4px,1vh,10px) 0;
+  }
+  .stage-figure-wrap{
+    position:relative; height:100%; min-height:0; display:flex; align-items:center; justify-content:center;
+    align-self:center; perspective:900px; touch-action:none;
+  }
+  #sonarField{ position:absolute; inset:0; width:100%; height:100%; z-index:3; pointer-events:none; }
+  .stage-word{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-weight:900; font-size:clamp(2.4rem,9vh,6rem); letter-spacing:-.02em; text-transform:uppercase;
+    white-space:nowrap; pointer-events:none; z-index:1; color:transparent;
+    -webkit-text-stroke:1.2px var(--stage-word-stroke);
+  }
+  .tilt-wrap{
+    position:relative; z-index:2; width:100%; height:100%; display:flex; align-items:center; justify-content:center;
+    transition:transform .3s var(--ease); will-change:transform; transform-style:preserve-3d;
+  }
+  #heroImg{
+    max-width:88%; max-height:34vh; object-fit:contain;
+    -webkit-mask-image:radial-gradient(ellipse 82% 86% at 50% 52%, black 72%, transparent 100%);
+    mask-image:radial-gradient(ellipse 82% 86% at 50% 52%, black 72%, transparent 100%);
+    filter:drop-shadow(0 20px 24px var(--hero-shadow));
+  }
+
+  .stage-copy{
+    display:flex; flex-direction:column; justify-content:flex-start; gap:clamp(6px,1.2vh,12px);
+    will-change:transform,opacity; min-height:0; overflow-y:auto; overflow-x:hidden;
+    -ms-overflow-style:none; scrollbar-width:none;
+  }
+  .stage-copy::-webkit-scrollbar{ display:none; }
+  .eyebrow-cls{ font-size:.7rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--accent); }
+  .stage-copy h2{ font-weight:900; font-size:clamp(1.2rem,3.4vh,1.9rem); }
+  .pill{ font-size:.64rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; padding:4px 11px; border-radius:999px; background:var(--accent-soft); color:var(--accent); white-space:nowrap; align-self:flex-start; }
+  .stage-tagline{ color:var(--ink-soft); font-size:clamp(.74rem,1.5vh,.88rem); line-height:1.45; max-width:58ch; }
+
+  .spec-list{ margin-top:2px; padding-top:clamp(6px,1.2vh,12px); border-top:1px solid var(--line); }
+  .spec-list .spec-row{ display:flex; justify-content:space-between; align-items:baseline; gap:16px; padding:clamp(4px,.9vh,8px) 0; border-bottom:1px solid var(--line); will-change:transform,opacity; }
+  .spec-list .spec-row.wide{ flex-direction:column; align-items:flex-start; gap:3px; }
+  .spec-list dt{ margin:0; font-size:.62rem; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-faint); font-weight:700; white-space:nowrap; }
+  .spec-list dd{ margin:0; font-size:clamp(.72rem,1.3vh,.82rem); font-weight:500; color:var(--ink); text-align:right; font-variant-numeric:tabular-nums; }
+  .spec-list .spec-row.wide dd{ text-align:left; color:var(--ink-soft); font-weight:400; }
+
+  .tier-btn{
+    align-self:flex-start; display:inline-flex; align-items:center; gap:8px; cursor:pointer;
+    font:inherit; font-size:.72rem; font-weight:700; letter-spacing:.04em; padding:8px 16px; border-radius:999px;
+    border:1.5px solid var(--accent); background:var(--accent-soft); color:var(--accent);
+    transition:background .25s var(--ease), color .25s var(--ease), transform .25s var(--ease);
+  }
+  .tier-btn::after{ content:'\2197'; font-size:.9em; }
+  .tier-btn:hover{ background:var(--accent); color:#fff; transform:translateY(-1px); }
+
+  .tier-modal{
+    position:fixed; inset:0; z-index:90; display:flex; align-items:center; justify-content:center; padding:clamp(12px,3vh,32px) 16px;
+    background:rgba(7,12,23,.55); -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
+  }
+  .tier-modal[hidden]{ display:none; }
+  .tier-panel{
+    width:min(1020px,100%); max-height:100%; display:flex; flex-direction:column; overflow:hidden;
+    background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:18px;
+    box-shadow:0 30px 80px rgba(7,12,23,.45);
+  }
+  .tier-head{ flex:none; display:flex; align-items:center; gap:20px; padding:18px 22px 14px; border-bottom:1px solid var(--line); }
+  .tier-head-text{ flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+  .tier-head h3{ margin:0; font-size:clamp(1rem,2.2vh,1.3rem); font-weight:800; letter-spacing:-.01em; }
+  .tier-toggle{ display:inline-flex; align-items:center; gap:9px; cursor:pointer; font-size:.72rem; font-weight:600; color:var(--ink-soft); user-select:none; }
+  .tier-toggle input{ position:absolute; opacity:0; pointer-events:none; }
+  .tier-switch{ position:relative; width:34px; height:20px; border-radius:999px; background:var(--line); transition:background .25s var(--ease); flex:none; }
+  .tier-switch::after{ content:''; position:absolute; top:3px; left:3px; width:14px; height:14px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.3); transition:transform .25s var(--ease); }
+  .tier-toggle input:checked + .tier-switch{ background:var(--accent); }
+  .tier-toggle input:checked + .tier-switch::after{ transform:translateX(14px); }
+  .tier-toggle input:focus-visible + .tier-switch{ outline:2px solid var(--accent); outline-offset:3px; }
+  .tier-close{ flex:none; }
+
+  .tier-scroll{ flex:1; min-height:0; overflow:auto; padding:0 22px 6px; }
+  .tier-table{ border-collapse:separate; border-spacing:0; width:100%; }
+  .tier-table th, .tier-table td{ padding:11px 14px; text-align:left; vertical-align:middle; font-size:.8rem; line-height:1.35; border-bottom:1px solid var(--line); }
+  .tier-table thead th{ position:sticky; top:0; z-index:2; background:var(--teal); color:#fff; font-weight:700; font-size:.76rem; letter-spacing:.02em; border-bottom:0; white-space:nowrap; }
+  .tier-table thead th:first-child{ border-top-left-radius:10px; }
+  .tier-table thead th:last-child{ border-top-right-radius:10px; }
+  .tier-table thead th.col{ text-align:center; }
+  .tier-table tbody th.grp{ width:24%; font-weight:700; font-size:.8rem; color:var(--ink); background:var(--accent-soft); border-right:1px solid var(--line); }
+  .tier-table tbody th.sub{ width:20%; font-weight:400; color:var(--ink-soft); }
+  .tier-table tbody td{ text-align:center; font-variant-numeric:tabular-nums; color:var(--ink-soft); font-weight:400; }
+  .tier-table tbody tr.diff td{ color:var(--ink); font-weight:700; background:var(--accent-soft); }
+  .tier-table tbody tr.diff th.sub{ color:var(--ink); }
+  .tier-table tbody tr.grp-start th, .tier-table tbody tr.grp-start td{ border-top:1px solid var(--line); }
+  .tier-table tbody tr:last-child th, .tier-table tbody tr:last-child td{ border-bottom:0; }
+  .tier-legend{ flex:none; display:flex; align-items:center; gap:8px; padding:12px 22px; border-top:1px solid var(--line); font-size:.7rem; color:var(--ink-faint); }
+  .tier-legend span:nth-child(odd){ width:14px; height:14px; border-radius:4px; flex:none; }
+  .tier-legend .lg-diff{ background:var(--accent-soft); border:1px solid var(--accent); }
+  .tier-legend .lg-same{ background:transparent; border:1px solid var(--line); margin-left:14px; }
+  @media (max-width:820px){
+    .tier-head{ flex-wrap:wrap; gap:10px 14px; padding:14px 16px 12px; }
+    .tier-head-text{ flex-basis:100%; order:1; }
+    .tier-toggle{ order:2; flex:1; }
+    .tier-close{ order:3; }
+    .tier-scroll{ padding:0 12px 6px; }
+    .tier-table th, .tier-table td{ padding:9px 8px; font-size:.7rem; }
+    .tier-table tbody th.grp{ width:auto; }
+  }
+
+  /* ---------- compare (flat, no cards) ---------- */
+  #compare{ padding-top:clamp(8px,1.6vh,20px); }
+  .compare-pickers-flat{ flex:none; display:grid; grid-template-columns:1fr 1fr; gap:28px; margin-bottom:4px; }
+  .picker-flat .section-label.accent-a{ color:var(--accent); }
+  .picker-flat .section-label.accent-b{ color:var(--purple); }
+  .thumb-row-flat{ display:flex; flex-wrap:wrap; gap:10px; margin-top:8px; }
+  .thumb-flat{
+    border:none; background:none; cursor:pointer; padding:0 0 6px; opacity:.4;
+    border-bottom:2px solid transparent; transition:opacity .3s var(--ease), border-color .3s var(--ease);
+  }
+  .thumb-flat img{ width:36px; height:36px; object-fit:contain; display:block; }
+  .thumb-flat[disabled]{ opacity:.15; cursor:not-allowed; pointer-events:none; }
+  .picker-flat.slot-a .thumb-flat.selected{ opacity:1; border-color:var(--accent); }
+  .picker-flat.slot-b .thumb-flat.selected{ opacity:1; border-color:var(--purple); }
+
+  .compare-table-wrap{ flex:1; min-height:0; overflow:auto; margin-top:14px; }
+  table.compare-table{ border-collapse:collapse; width:100%; min-width:480px; }
+  .compare-table thead th{ text-align:left; padding:0 16px 10px 0; vertical-align:bottom; border-bottom:1px solid var(--ink); }
+  .col-head{ display:flex; align-items:center; gap:9px; }
+  .col-head .thumb-mini{ width:32px; height:32px; flex:none; }
+  .col-head .thumb-mini img{ width:100%; height:100%; object-fit:contain; display:block; }
+  .col-head .fr-name{ font-weight:700; font-size:.86rem; line-height:1.1; }
+  .col-head .fr-class{ font-size:.6rem; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.06em; font-weight:700; }
+  .compare-table tbody th{ text-align:left; font-weight:700; font-size:.7rem; color:var(--ink-faint); padding:9px 16px 9px 0; border-bottom:1px solid var(--line); white-space:nowrap; }
+  .compare-table tbody td{ padding:9px 16px; border-bottom:1px solid var(--line); font-size:.78rem; font-variant-numeric:tabular-nums; }
+  .compare-table tbody tr:last-child th, .compare-table tbody tr:last-child td{ border-bottom:none; }
+  td.diff{ background:var(--purple-soft); }
+  td.lead{ color:var(--accent); font-weight:700; }
+  .lead-mark{ color:var(--accent); margin-right:5px; }
+
+  /* ---------- guide (which SPRINT-Nav is right for you) ---------- */
+  #guide{ padding-top:clamp(8px,1.6vh,20px); }
+  .guide-head{ flex:none; }
+  .guide-head h2{ font-weight:900; font-size:clamp(1.05rem,2.6vh,1.5rem); margin-top:4px; }
+  .guide-image-wrap{
+    flex:1; min-height:0; display:flex; flex-direction:column; align-items:center; gap:clamp(12px,2vh,22px);
+    padding:clamp(12px,2.2vh,22px) 0; overflow-y:auto; -ms-overflow-style:none; scrollbar-width:none;
+  }
+  .guide-image-wrap::-webkit-scrollbar{ display:none; }
+  .guide-image{
+    max-width:100%; max-height:60vh; width:auto; object-fit:contain; border-radius:16px; flex:none;
+    filter:drop-shadow(0 16px 32px var(--hero-shadow));
+  }
+
+  /* ---------- accuracy (native version of the accuracy slide) ---------- */
+  #accuracy{ padding-top:clamp(8px,1.6vh,20px); }
+  .acc-layout{
+    flex:1; min-height:0; display:grid; grid-template-columns:minmax(300px,5fr) 7fr; gap:clamp(16px,3vw,44px); align-items:center;
+    overflow-y:auto; -ms-overflow-style:none; scrollbar-width:none; padding:4px 0;
+  }
+  .acc-layout::-webkit-scrollbar{ display:none; }
+  .acc-copy h2{ margin:0 0 clamp(6px,1.4vh,14px); font-weight:900; font-size:clamp(1.5rem,5.2vh,2.5rem); line-height:1.02; letter-spacing:-.02em; }
+  .acc-copy h3{ margin:0 0 6px; font-size:.86rem; font-weight:800; }
+  .acc-copy ul{ margin:0 0 clamp(8px,1.6vh,16px); padding-left:1.1em; font-size:clamp(.72rem,1.5vh,.84rem); line-height:1.4; color:var(--ink-soft); }
+  .acc-copy li{ margin-bottom:3px; }
+  .acc-copy li ul{ margin:3px 0 0; list-style:circle; }
+  .acc-table{ width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+  .acc-table th, .acc-table td{ padding:clamp(4px,.9vh,8px) 10px; text-align:center; font-size:clamp(.72rem,1.5vh,.86rem); border:1px solid var(--bg); }
+  .acc-table thead th{ background:#141a3c; color:#fff; font-weight:800; line-height:1.15; }
+  .acc-table tbody th{ width:16%; font-weight:600; }
+  .acc-table tbody tr{ background:color-mix(in srgb, var(--ink) 17%, transparent); transition:background .2s var(--ease), color .2s var(--ease); cursor:default; }
+  .acc-table tbody tr:nth-child(even){ background:color-mix(in srgb, var(--ink) 8%, transparent); }
+  .acc-table tbody tr.on{ background:var(--accent); color:#fff; }
+  .acc-foot{ margin:6px 0 0; font-size:.72rem; color:var(--ink-soft); }
+  .acc-figure{ display:flex; justify-content:center; align-items:center; min-height:0; }
+  .acc-svg{ width:100%; height:auto; max-height:calc(100vh - 210px); min-height:260px; overflow:visible; }
+  .acc-svg .ring .hit{ fill:none; stroke:transparent; stroke-width:26; pointer-events:stroke; }
+  .acc-svg .ring .line{ fill:none; stroke:var(--ink); stroke-width:3; stroke-dasharray:11 8; transition:stroke .2s var(--ease), stroke-width .2s var(--ease); }
+  .acc-svg .ring.solid .line{ stroke-dasharray:none; stroke-width:2; }
+  .acc-svg .ring text{ fill:var(--ink); font-weight:800; font-size:30px; text-anchor:middle; transition:fill .2s var(--ease); pointer-events:none; }
+  .acc-svg .ring.on .line{ stroke:var(--accent); stroke-width:6; }
+  .acc-svg .ring.solid.on .line{ stroke-width:4; }
+  .acc-svg .ring.on text{ fill:var(--accent); }
+  .acc-svg .survey-label{ fill:var(--ink); font-weight:800; font-size:30px; }
+  .acc-svg .ring{ transform-box:fill-box; transform-origin:center; animation:ringIn .9s var(--ease) both; animation-delay:calc(var(--i) * 90ms); }
+  @keyframes ringIn{ from{ opacity:0; transform:scale(.55); } to{ opacity:1; transform:scale(1); } }
+  @media (prefers-reduced-motion: reduce){ .acc-svg .ring{ animation:none; } }
+  @media (max-width:820px){
+    .acc-layout{ grid-template-columns:1fr; align-items:start; }
+    .acc-svg{ max-height:none; }
+  }
+
+  /* ---------- 3D interactive model ---------- */
+  .three-stage{ flex:1; min-height:0; display:flex; flex-direction:column; gap:clamp(6px,1.2vh,10px); padding:clamp(4px,1vh,10px) 0; }
+  .three-canvas-wrap{
+    position:relative; flex:1; min-height:0; border-radius:18px; overflow:hidden; touch-action:none;
+    background:radial-gradient(circle at 50% 30%, var(--depth-mid), var(--depth-deep) 78%);
+    border:1px solid var(--line);
+  }
+  #threeCanvas{ position:absolute; inset:0; width:100%; height:100%; display:block; cursor:grab; }
+  #threeCanvas:active{ cursor:grabbing; }
+  .three-loading{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-size:.72rem; font-weight:900; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-faint);
+    pointer-events:none; transition:opacity .5s var(--ease); background:var(--depth-deep);
+  }
+  .three-badge{ position:absolute; top:14px; left:16px; height:15px; opacity:.85; pointer-events:none; }
+  .three-badge img{ height:100%; width:auto; display:block; }
+  .three-hint{ flex:none; font-size:.66rem; color:var(--ink-faint); text-align:center; letter-spacing:.02em; }
+
+  /* ---------- bottom tab bar (flat) ---------- */
+  .tabbar{
+    position:relative; flex:none;
+    display:flex; justify-content:center; gap:6px; padding:clamp(4px,1vh,8px) 6px calc(clamp(4px,1vh,8px) + env(safe-area-inset-bottom));
+    background:var(--tabbar-bg); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+    border-top:1px solid var(--line);
+  }
+  .tab-indicator{
+    position:absolute; bottom:calc(clamp(4px,1vh,8px) + env(safe-area-inset-bottom) - 2px); height:2.5px;
+    border-radius:3px; background:var(--accent); transition:transform .45s var(--ease), width .45s var(--ease);
+    left:0; will-change:transform;
+  }
+  .tab-btn{
+    border:none; background:none; color:var(--ink-faint); cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; gap:2px;
+    padding:5px 26px; border-radius:12px; font-size:.68rem; font-weight:700; letter-spacing:.02em;
+    transition:color .3s var(--ease), background .3s var(--ease);
+    min-width:88px;
+  }
+  .tab-btn svg{ width:18px; height:18px; }
+  .tab-btn.active{ color:var(--accent); background:var(--accent-soft); }
+
+  /* ---------- tactile tap feedback ---------- */
+  .film-item, .thumb-flat, .tab-btn, .icon-btn, .lang-btn{ transform:scale(1); transition:transform .15s var(--ease), opacity .3s var(--ease), color .3s var(--ease), background .3s var(--ease), border-color .3s var(--ease); }
+  .film-item:active, .thumb-flat:active, .tab-btn:active, .icon-btn:active, .lang-btn:active{ transform:scale(.92); }
+  @media (prefers-reduced-motion: reduce){
+    .film-item, .thumb-flat, .tab-btn, .icon-btn, .lang-btn{ transition:none; }
+  }
+
+  footer.note{ flex:none; font-size:.6rem; color:var(--ink-faint); text-align:center; padding:6px 0 2px; }
+
+  @media (max-width:820px){
+    .stage-split{ grid-template-columns:1fr; }
+    .stage-figure-wrap{ min-height:0; }
+    #heroImg{ max-height:22vh; }
+    .compare-pickers-flat{ grid-template-columns:1fr; gap:16px; }
+    .topbar{ padding:10px 16px; }
+    .shell{ padding:0 16px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="backdrop">
+  <div class="depth-gradient"></div>
+  <div class="depth-lines"></div>
+  <div class="depth-sweep"></div>
+  <div class="depth-labels" aria-hidden="true">
+    <span style="top:4%">0 m</span>
+    <span style="top:26%">1.500 m</span>
+    <span style="top:48%">3.000 m</span>
+    <span style="top:70%">4.500 m</span>
+    <span style="top:92%">6.000 m</span>
+  </div>
+  <div class="blob blob-cyan"></div>
+  <div class="blob blob-purple"></div>
+  <div class="blob blob-teal"></div>
+</div>
+
+<!-- ============ SPLASH ============ -->
+<div class="overlay" id="splash">
+  <button class="splash-btn" id="splashBtn" aria-label="Continuar"></button>
+  <img class="logo-mark theme-logo" src="assets/logo/sonardyne-logo.svg" alt="Sonardyne">
+  <div class="family-sonar">
+    <div class="family-glow"></div>
+    <div class="family-ring"></div>
+    <div class="family-ring"></div>
+    <div class="family-ring"></div>
+    <img class="family-hero" src="assets/products/familia.png" alt="Família SPRINT-Nav">
+  </div>
+  <div class="splash-hint"><span class="pulse">Toque para continuar · Tap to continue</span></div>
+</div>
+
+<!-- ============ LANGUAGE ============ -->
+<div class="overlay" id="langSelect" hidden>
+  <img class="logo-mark theme-logo" src="assets/logo/sonardyne-logo.svg" alt="Sonardyne" style="margin-bottom:34px;">
+  <div class="lang-title">Escolha o idioma / Choose your language</div>
+  <div class="lang-choices">
+    <button class="lang-btn" data-lang="pt">Português</button>
+    <button class="lang-btn" data-lang="en">English</button>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app" hidden>
+  <header class="topbar">
+    <img class="logo theme-logo" src="assets/logo/sonardyne-logo.svg" alt="Sonardyne">
+    <div class="divider"></div>
+    <h1 id="brandTitle"></h1>
+    <div class="topbar-right">
+      <div class="lang-toggle">
+        <button data-lang="pt">PT</button>
+        <button data-lang="en">EN</button>
+      </div>
+      <button class="icon-btn" id="themeToggleBtn" title="Alternar tema claro/escuro · Toggle light/dark theme" aria-label="Alternar tema claro/escuro">
+        <svg id="themeIconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M4.4 4.4l1.7 1.7M17.9 17.9l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.4 19.6l1.7-1.7M17.9 6.1l1.7-1.7"/></svg>
+        <svg id="themeIconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" hidden><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5Z"/></svg>
+      </button>
+      <button class="icon-btn" id="backToSplashBtn" title="Voltar à tela inicial · Back to start" aria-label="Voltar à tela inicial">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3.5-7.11"/><path d="M3 3v6h6"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="shell">
+    <p class="lede" id="ledeText"></p>
+
+    <section id="familia" class="view">
+      <div class="family-top">
+        <span class="section-label" id="labelFamily"></span>
+        <div class="filmstrip" id="filmstrip" role="listbox" aria-label="SPRINT-Nav"></div>
+      </div>
+
+      <div class="stage-split">
+        <div class="stage-figure-wrap" id="stageWrap">
+          <div class="stage-word" id="stageWord"></div>
+          <div class="tilt-wrap" id="tiltWrap">
+            <img id="heroImg" src="" alt="">
+          </div>
+          <canvas id="sonarField"></canvas>
+        </div>
+        <div class="stage-copy">
+          <span class="eyebrow-cls" id="heroCls"></span>
+          <h2 id="heroName"></h2>
+          <span class="pill" id="heroPill"></span>
+          <p class="stage-tagline" id="heroTagline"></p>
+          <button type="button" class="tier-btn" id="tierBtn" hidden></button>
+          <dl class="spec-list" id="specList"></dl>
+        </div>
+      </div>
+    </section>
+
+    <section id="compare" class="view" hidden>
+      <div class="compare-pickers-flat">
+        <div class="picker-flat slot-a">
+          <span class="section-label accent-a" id="labelPickerA"></span>
+          <div class="thumb-row-flat" id="thumbsA"></div>
+        </div>
+        <div class="picker-flat slot-b">
+          <span class="section-label accent-b" id="labelPickerB"></span>
+          <div class="thumb-row-flat" id="thumbsB"></div>
+        </div>
+      </div>
+      <div class="compare-table-wrap">
+        <table class="compare-table" id="compareTable"></table>
+      </div>
+    </section>
+
+    <section id="guide" class="view" hidden>
+      <div class="guide-head">
+        <span class="section-label" id="labelGuide"></span>
+        <h2 id="guideTitle"></h2>
+      </div>
+      <div class="guide-image-wrap">
+        <img class="guide-image" src="assets/products/qual_sprint.png" alt="Which SPRINT-Nav is right for you?">
+      </div>
+    </section>
+
+    <section id="accuracy" class="view" hidden>
+      <div class="acc-layout" id="accLayout"></div>
+    </section>
+
+    <section id="threed" class="view" hidden>
+      <div class="guide-head">
+        <span class="section-label" id="label3d"></span>
+        <h2 id="title3d"></h2>
+      </div>
+      <div class="three-stage">
+        <div class="three-canvas-wrap" id="threeCanvasWrap">
+          <canvas id="threeCanvas"></canvas>
+          <div class="three-loading" id="threeLoading">SPRINT-Nav U/UX</div>
+          <div class="three-badge"><img class="theme-logo" src="assets/logo/sonardyne-logo.svg" alt="Sonardyne"></div>
+        </div>
+        <p class="three-hint" id="threeHint"></p>
+      </div>
+    </section>
+
+    <footer class="note" id="footerNote"></footer>
+  </div>
+
+  <nav class="tabbar">
+    <span class="tab-indicator" id="tabIndicator"></span>
+    <button class="tab-btn active" data-view="familia">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 7.5 12 12l9-4.5L12 3Z"/><path d="M3 12.5 12 17l9-4.5"/><path d="M3 17 12 21.5 21 17"/></svg>
+      <span id="tabFamilyLabel"></span>
+    </button>
+    <button class="tab-btn" data-view="compare">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="9" width="6" height="11" rx="1.2"/><rect x="14" y="4" width="6" height="16" rx="1.2"/></svg>
+      <span id="tabCompareLabel"></span>
+    </button>
+    <button class="tab-btn" data-view="guide">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.2 9.5a2.8 2.8 0 0 1 5.4.9c0 1.9-2.4 2-2.6 3.6"/><path d="M12 17.2v.1"/></svg>
+      <span id="tabGuideLabel"></span>
+    </button>
+    <button class="tab-btn" data-view="accuracy">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r=".6" fill="currentColor" stroke="none"/></svg>
+      <span id="tabAccuracyLabel"></span>
+    </button>
+    <button class="tab-btn" data-view="threed">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 7v10l8 4 8-4V7l-8-4Z"/><path d="M4 7l8 4 8-4M12 11v10"/></svg>
+      <span id="tab3DLabel"></span>
+    </button>
+  </nav>
+</div>
+
+<div class="tier-modal" id="tierModal" hidden role="dialog" aria-modal="true" aria-labelledby="tierModalTitle">
+  <div class="tier-panel" id="tierPanel">
+    <header class="tier-head">
+      <div class="tier-head-text">
+        <span class="eyebrow-cls" id="tierModalEyebrow"></span>
+        <h3 id="tierModalTitle"></h3>
+      </div>
+      <label class="tier-toggle"><input type="checkbox" id="tierOnlyDiff"><span class="tier-switch" aria-hidden="true"></span><span id="tierOnlyDiffLbl"></span></label>
+      <button type="button" class="icon-btn tier-close" id="tierClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </header>
+    <div class="tier-scroll" id="tierScroll"></div>
+    <footer class="tier-legend"><span class="lg-diff"></span><span id="tierLegendDiff"></span><span class="lg-same"></span><span id="tierLegendSame"></span></footer>
+  </div>
+</div>
+
+<script>
+const EASE_OUT = 'cubic-bezier(.16,1,.3,1)';
+const EASE_IN  = 'cubic-bezier(.7,0,.84,0)';
+const REDUCE_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ================= sonar click sounds (synthesized, no audio files) ================= */
+let audioCtx = null;
+function playPing(freq = 880, dur = 0.09, vol = 0.05){
+  try{
+    if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if(audioCtx.state === 'suspended') audioCtx.resume();
+    const t0 = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, t0);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(60, freq * 0.55), t0 + dur);
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(vol, t0 + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.02);
+  }catch(err){ /* audio unavailable — fail silently */ }
+}
+const sndSelect  = ()=> playPing(760, 0.10, 0.045);
+const sndTab     = ()=> playPing(620, 0.09, 0.04);
+const sndConfirm = ()=> playPing(920, 0.16, 0.05);
+const sndBack    = ()=> playPing(420, 0.14, 0.045);
+window.playPing = playPing;
+
+/* ================= content ================= */
+const I18N = {
+  pt:{
+    brandTitle:'Conheça a família SPRINT-Nav',
+    lede:'Seis navegadores híbridos inercial-acústicos construídos sobre uma única arquitetura — do instrumento de bolso para AUVs até o sistema free-inertial de 72 horas sem apoio externo.',
+    labelFamily:'Família SPRINT-Nav',
+    tabFamily:'Família', tabCompare:'Comparação', tabGuide:'Guia', tabAccuracy:'Acurácia', tab3d:'Modelo 3D',
+    labelGuide:'Guia de escolha', guideTitle:'Qual SPRINT-Nav é ideal para você?',
+    acc:{ title:'Acurácia do SPRINT-Nav', what:'O que é?',
+      bullets:['Métricas cruciais para operações de AUV sem apoio.','As acurácias típicas de survey cancelam o viés nos trechos de retorno.','Os valores DFO indicam a resiliência de curto prazo a apoio ruidoso.'],
+      sub:'Selecione uma variante com DFO mais alto ao operar com sensores de apoio mais ruidosos.',
+      colDist:'Distância da origem', colSurvey:'Survey típico', foot:'*inclui as variantes SN-X F e FX', survey:'Survey', aria:'Circunferências de acurácia por variante', dec:',' },
+    label3d:'Modelo interativo', title3d:'SPRINT-Nav U/UX em 3D',
+    hint3d:'Arraste para girar o navegador · toque nele para disparar a sonda na hora',
+    pickerA:'Produto A', pickerB:'Produto B',
+    footerNote:'Especificações resumidas das páginas oficiais de produto em sonardyne.com · imagens © Sonardyne International',
+    labels:{ depth:'Profundidade', dims:'Dimensões', weight:'Peso', dvl:'DVL', heading:'Precisão de heading', pitchroll:'Precisão pitch/roll', distance:'Precisão de distância', power:'Consumo', stationKeeping:'Station keeping', unaided:'Autonomia sem apoio', applications:'Aplicações', performance:'Desempenho', tierBtn:'Diferença entre I/S/X', tierTitle:'Diferenças entre SPRINT-Nav I, S e X', tierOnlyDiff:'Mostrar só o que muda', tierClose:'Fechar', tierLegendDiff:'Muda entre variantes', tierLegendSame:'Igual nas três' },
+    locale:'pt-BR'
+  },
+  en:{
+    brandTitle:'Discover the SPRINT-Nav Family',
+    lede:'Six hybrid inertial-acoustic navigators built on one architecture — from a palm-sized instrument for AUVs to the free-inertial system rated for 72 hours unaided.',
+    labelFamily:'SPRINT-Nav Family',
+    tabFamily:'Family', tabCompare:'Compare', tabGuide:'Guide', tabAccuracy:'Accuracy', tab3d:'3D Model',
+    labelGuide:'Selection guide', guideTitle:'Which SPRINT-Nav is right for you?',
+    acc:{ title:'SPRINT-Nav Accuracy', what:'What is it?',
+      bullets:['Crucial metrics for unaided AUV operations.','Typical survey accuracies cancel bias on the return legs.','DFO values indicate short term resilience to noisy aiding.'],
+      sub:'Select a higher DFO variant when operating with noisier aiding sensors.',
+      colDist:'Distance from origin', colSurvey:'Typical Survey', foot:'*including SN-X variants F, FX', survey:'Survey', aria:'Accuracy circles by variant', dec:'.' },
+    label3d:'Interactive model', title3d:'SPRINT-Nav U/UX in 3D',
+    hint3d:'Drag to rotate the navigator · tap it to fire the probe on demand',
+    pickerA:'Product A', pickerB:'Product B',
+    footerNote:'Specifications summarized from official product pages at sonardyne.com · images © Sonardyne International',
+    labels:{ depth:'Depth rating', dims:'Dimensions', weight:'Weight', dvl:'DVL', heading:'Heading accuracy', pitchroll:'Pitch/roll accuracy', distance:'Distance accuracy', power:'Power', stationKeeping:'Station keeping', unaided:'Unaided endurance', applications:'Applications', performance:'Performance', tierBtn:'Difference between I/S/X', tierTitle:'Differences between SPRINT-Nav I, S and X', tierOnlyDiff:'Show only what changes', tierClose:'Close', tierLegendDiff:'Differs between variants', tierLegendSame:'Same across all three' },
+    locale:'en-US'
+  }
+};
+
+const same = v => [v,v,v];
+const TIER_NAV_PT = { cols:['I','S','X'], groups:[
+  ['DVL aided', [
+    ['Survey típico', ['0,03%','0,02%','0,01%']],
+    ['Distância da origem', ['0,10%','0,06%','0,04%']],
+    ['Opção alta altitude (HA) (375 kHz)', ['0,12%','0,07%','0,05%']]]],
+  ['Sem apoio', [
+    ['Curto prazo', ['1,2 m em 60 s','0,5 m em 60 s','0,3 m em 60 s']],
+    ['Longo prazo', ['1 nm em 45 minutos','1 nm em 2,5 h','1 nm em 8 h']]]],
+  ['Altitude mín/máx', [
+    ['Padrão (625 kHz)', same('0,3/175 m')],
+    ['Opção alta altitude (HA) (375 kHz)', same('0,4/230 m')]]],
+  ['USBL e DVL aided', [['Melhoria de precisão', ['Até 7× melhor','Até 10× melhor','Até 13× melhor']]]],
+  ['Station keeping', [[null, ['< 2 m em 24 h','< 1 m em 24 h','< 1 m em 24 h']]]],
+  ['LBL/DVL aided', [[null, same('3 cm área confinada, 20 cm área ampla (dinâmico)')]]],
+  ['Heading (secante da latitude) com GNSS ou USBL e DVL', [[null, ['0,04°','0,025°','0,01°']]]],
+  ['Requisitos de alimentação', [
+    ['DVL desligado', same('24 V dc ±10%, 18 W nominal, 30 W máximo')],
+    ['DVL ligado e bateria totalmente carregada', same('24 V dc ±10%, 25 W nominal, 30 W máximo')]]],
+  ['Bateria interna de backup', [[null, same('Li-ion/5 minutos')]]],
+  ['Armazenamento de dados', [[null, same('64 GB de memória interna')]]],
+  ['Portas seriais/protocolo', [[null, same('2x RS232, 1x RS232 ou RS485')]]],
+  ['Outras portas', [[null, same('Ethernet, 4x Triggers')]]],
+  ['Construção mecânica', [[null, same('Titânio')]]],
+  ['Dimensões (diâmetro x altura, incluindo conectores)', [
+    ['4.000 m', same('205 x 309 mm')],
+    ['6.000 m', same('205 x 318 mm')]]],
+  ['Peso ar/água', [
+    ['4.000 m', same('20/11,1 kg')],
+    ['6.000 m', same('23/13,7 kg')]]],
+  ['Classificação de profundidade', [[null, same('4.000/6.000 m')]]]
+] };
+const TIER_NAV_EN = { cols:['I','S','X'], groups:[
+  ['DVL aided', [
+    ['Typical survey', ['0.03%','0.02%','0.01%']],
+    ['Distance from origin', ['0.10%','0.06%','0.04%']],
+    ['High altitude (HA) option (375 kHz)', ['0.12%','0.07%','0.05%']]]],
+  ['Unaided', [
+    ['Short term', ['1.2 m in 60 s','0.5 m in 60 s','0.3 m in 60 s']],
+    ['Long term', ['1 nm in 45 minutes','1 nm in 2.5 hrs','1 nm in 8 hrs']]]],
+  ['Altitude min/max', [
+    ['Standard (625 kHz)', same('0.3/175 m')],
+    ['High altitude (HA) option (375 kHz)', same('0.4/230 m')]]],
+  ['USBL and DVL aided', [['Precision improvement', ['Up to 7x better','Up to 10x better','Up to 13x better']]]],
+  ['Station keeping', [[null, ['<2 m over 24 hours','<1 m over 24 hours','<1 m over 24 hours']]]],
+  ['LBL/DVL aided', [[null, same('3 cm confined area, 20 cm wide area (dynamic)')]]],
+  ['Heading (secant latitude) with GNSS or USBL and DVL', [[null, ['0.04°','0.025°','0.01°']]]],
+  ['Power requirements', [
+    ['DVL off', same('24 V dc ±10%, 18 W nominal, 30 W maximum')],
+    ['DVL on and battery fully charged', same('24 V dc ±10%, 25 W nominal, 30 W maximum')]]],
+  ['Internal battery backup', [[null, same('Li-ion/5 minutes')]]],
+  ['Data storage', [[null, same('64 GB internal memory')]]],
+  ['Serial ports/protocol', [[null, same('2x RS232, 1x RS232 or RS485')]]],
+  ['Other ports', [[null, same('Ethernet, 4x Triggers')]]],
+  ['Mechanical construction', [[null, same('Titanium')]]],
+  ['Dimensions (diameter x height, including connectors)', [
+    ['4,000 m', same('205 x 309 mm')],
+    ['6,000 m', same('205 x 318 mm')]]],
+  ['Weight air/water', [
+    ['4,000 m', same('20/11.1 kg')],
+    ['6,000 m', same('23/13.7 kg')]]],
+  ['Depth rating', [[null, same('4,000/6,000 m')]]]
+] };
+
+
+const PRODUCTS = [
+  {
+    id:'ffx', image:'assets/products/sprint-nav-f.png',
+    depthRatingM:6000, headingAccuracyDeg:0.01, pitchRollDeg:0.01, distanceAccuracyPct:0.01, powerW:25,
+    pt:{ name:'SPRINT-Nav F/FX', short:'F/FX', cls:'Longa Autonomia',
+      tagline:'O SPRINT-Nav F e o FX são os navegadores híbridos multifuncionais de melhor desempenho do mundo, otimizados para desempenho inercial livre sustentado e levantamento do fundo do mar, onde a precisão e a integridade da posição são cruciais.',
+      dims:'Ø225 × 396 mm', weightDisplay:'22,75 kg ar / 11,6 kg água', dvl:'625 kHz Syrinx, perfilamento 0,4–80 m',
+      headingDisplay:'0,01°', pitchRollDisplay:'0,01°', distanceDisplay:'0,01% (com DVL)', powerDisplay:'15–25 W (DVL desligado/ligado)',
+      unaided:'1 NM / 24 h (F) · 1 NM / 72 h (FX), sem apoio',
+      applications:['XLUUVs free-inertial sustentado','Navios de superfície','Survey de fundo do mar'] },
+    en:{ name:'SPRINT-Nav F/FX', short:'F/FX', cls:'Long-Endurance',
+      tagline:'SPRINT-Nav F and FX are the world\'s highest performing all-in-one hybrid navigators, optimised for sustained free inertial performance and seabed survey where accuracy and position integrity is crucial.',
+      dims:'Ø225 × 396 mm', weightDisplay:'22.75 kg air / 11.6 kg water', dvl:'625 kHz Syrinx, 0.4–80 m profiling',
+      headingDisplay:'0.01°', pitchRollDisplay:'0.01°', distanceDisplay:'0.01% (DVL-aided)', powerDisplay:'15–25 W (DVL off/on)',
+      unaided:'1 NM / 24 h (F) · 1 NM / 72 h (FX), unaided',
+      applications:['Sustained free-inertial XL UUVs','Surface vessels','Seabed survey'] }
+  },
+  {
+    id:'dp', image:'assets/products/sprint-nav-dp.png',
+    depthRatingM:100, headingAccuracyDeg:0.04, pitchRollDeg:0.01, distanceAccuracyPct:0.02, powerW:15,
+    pt:{ name:'SPRINT-Nav DP', short:'DP', cls:'Posicionamento Dinâmico',
+      tagline:'Desenvolvido para posicionamento dinâmico em águas rasas sem GNSS, mantendo a posição da embarcação em obras costeiras.',
+      dims:'Ø225 × 346 mm', weightDisplay:'23,9 kg ar / 13,1 kg água', dvl:'Syrinx, bottom lock até 230 m',
+      headingDisplay:'0,04°', pitchRollDisplay:'0,01°', distanceDisplay:'0,02%', powerDisplay:'15 W nominal',
+      stationKeeping:'< 2 m em 24 h',
+      applications:['Embarcações DP2/DP3','Survey costeiro','Parques eólicos offshore'] },
+    en:{ name:'SPRINT-Nav DP', short:'DP', cls:'Station-Keeping',
+      tagline:'Purpose-built for shallow-water dynamic positioning without GNSS, holding vessel position through coastal and nearshore construction work.',
+      dims:'Ø225 × 346 mm', weightDisplay:'23.9 kg air / 13.1 kg water', dvl:'Syrinx, bottom lock to 230 m',
+      headingDisplay:'0.04°', pitchRollDisplay:'0.01°', distanceDisplay:'0.02%', powerDisplay:'15 W nominal',
+      stationKeeping:'< 2 m over 24 h',
+      applications:['DP2/DP3 vessels','Coastal survey','Offshore wind farms'] }
+  },
+  {
+    id:'nav', image:'assets/products/sprint-nav.png',
+    depthRatingM:6000, headingAccuracyDeg:0.025, pitchRollDeg:0.01, distanceAccuracyPct:0.02, powerW:25,
+    pt:{ name:'SPRINT-Nav I/S/X', short:'I/S/X', cls:'Padrão',
+      tagline:'Navegador padrão para veículos workclass, disponível em três níveis de performance (I / S / X) com dupla classificação de profundidade.',
+      dims:'Ø205 × 309–318 mm', weightDisplay:'20–23 kg ar / 11,1–13,7 kg água', dvl:'625 kHz padrão ou 375 kHz alta altitude',
+      headingDisplay:'0,04° (I) / 0,025° (S) / 0,01° (X)', pitchRollDisplay:'0,01°', distanceDisplay:'0,03% (I) / 0,02% (S) / 0,01% (X)', powerDisplay:'18–25 W (DVL desligado/ligado)',
+      applications:['ROVs workclass','XLUUVs','Survey sparse-LBL','Operações SDV'],
+      tierTable:TIER_NAV_PT },
+    en:{ name:'SPRINT-Nav I/S/X', short:'I/S/X', cls:'Standard',
+      tagline:'The standard navigator for workclass vehicles, offered in three performance tiers (I / S / X) with dual depth ratings.',
+      dims:'Ø205 × 309–318 mm', weightDisplay:'20–23 kg air / 11.1–13.7 kg water', dvl:'625 kHz standard or 375 kHz high-altitude',
+      headingDisplay:'0.04° (I) / 0.025° (S) / 0.01° (X)', pitchRollDisplay:'0.01°', distanceDisplay:'0.03% (I) / 0.02% (S) / 0.01% (X)', powerDisplay:'18–25 W (DVL off/on)',
+      applications:['Workclass ROVs','XLUUVs','Sparse-LBL survey','SDV operations'],
+      tierTable:TIER_NAV_EN }
+  },
+  {
+    id:'sprint', image:'assets/products/sprint.png',
+    depthRatingM:6000, headingAccuracyDeg:0.04, pitchRollDeg:0.01, distanceAccuracyPct:0.03, powerW:15,
+    pt:{ name:'SPRINT', short:'SPRINT', cls:'INS Standalone',
+      tagline:'INS standalone flexível e econômico, sem DVL embutido — funde as fontes de apoio já existentes no veículo: USBL, LBL, DVL, GNSS ou profundidade.',
+      dims:'Ø205 × 260–280 mm', weightDisplay:'18,5–22 kg ar / 11,5–14 kg água', dvl:'Externo / fornecido pelo veículo',
+      headingDisplay:'0,05° (300) / 0,04° (500) / 0,02° (700)', pitchRollDisplay:'0,01°', distanceDisplay:'0,05% / 0,03% / 0,02% (com DVL)', powerDisplay:'15 W nominal',
+      applications:['Guiagem de ROV','Survey independente','Veículos com DVL/USBL próprio'] },
+    en:{ name:'SPRINT', short:'SPRINT', cls:'Standalone INS',
+      tagline:'A flexible, cost-effective standalone INS with no built-in DVL — it fuses whatever aiding sources already exist on the vehicle: USBL, LBL, DVL, GNSS or depth.',
+      dims:'Ø205 × 260–280 mm', weightDisplay:'18.5–22 kg air / 11.5–14 kg water', dvl:'External / vehicle-supplied',
+      headingDisplay:'0.05° (300) / 0.04° (500) / 0.02° (700)', pitchRollDisplay:'0.01°', distanceDisplay:'0.05% / 0.03% / 0.02% (DVL-aided)', powerDisplay:'15 W nominal',
+      applications:['ROV guidance','Independent survey','Vehicles with existing DVL/USBL'] }
+  },
+  {
+    id:'m', image:'assets/products/sprint-nav-m.png',
+    depthRatingM:4000, headingAccuracyDeg:0.10, pitchRollDeg:0.02, distanceAccuracyPct:0.05, powerW:10,
+    pt:{ name:'SPRINT-Nav Mini', short:'M', cls:'Compacto',
+      tagline:'Navegador compacto tudo-em-um, combinando AHRS, DVL, ADCP e profundidade para ROVs de observação, AUVs e submersíveis tripulados.',
+      dims:'Ø148 × 187–213 mm', weightDisplay:'3,6–7,1 kg ar / 0,7–4,2 kg água', dvl:'500 kHz + ADCP, altitude 0,3–200 m',
+      depthDisplay:'300 m / 4.000 m',
+      headingDisplay:'0,10° (GNSS/USBL + DVL) · 0,15° (um único sensor)', pitchRollDisplay:'0,02°', distanceDisplay:'0,05% (survey) · 0,30% (da origem)', powerDisplay:'10 W nominal',
+      applications:['ROVs de observação','ROVs work-class leve','AUVs','USVs','Submersíveis tripulados','Navegação de mergulhador','Busca do norte verdadeiro'] },
+    en:{ name:'SPRINT-Nav Mini', short:'M', cls:'Compact',
+      tagline:'A compact all-in-one navigator pairing AHRS, DVL, ADCP and depth sensing for observation-class ROVs, AUVs and manned submersibles.',
+      dims:'Ø148 × 187–213 mm', weightDisplay:'3.6–7.1 kg air / 0.7–4.2 kg water', dvl:'500 kHz + ADCP, 0.3–200 m altitude',
+      depthDisplay:'300 m / 4,000 m',
+      headingDisplay:'0.10° (GNSS/USBL + DVL) · 0.15° (single-source aiding)', pitchRollDisplay:'0.02°', distanceDisplay:'0.05% (survey) · 0.30% (from origin)', powerDisplay:'10 W nominal',
+      applications:['Observation-class ROVs','Light work-class ROVs','AUVs','USVs','Manned submersibles','Diver navigation boards','True North Seeking'] }
+  },
+  {
+    id:'u', image:'assets/products/sprint-nav-u.png',
+    depthRatingM:1000, headingAccuracyDeg:0.08, pitchRollDeg:0.02, distanceAccuracyPct:0.05, powerW:8,
+    pt:{ name:'SPRINT-Nav U/UX', short:'U/UX', cls:'Micro',
+      tagline:'O menor navegador híbrido acústico-inercial do mundo — feito para plataformas robóticas onde cada milímetro de payload conta.',
+      dims:'Ø114–118 × 126 mm', weightDisplay:'2,3 kg no ar / 1,0 kg na água', dvl:'500 kHz, bottom lock até 100 m',
+      headingDisplay:'0,15° (U) / 0,08° (UX)', pitchRollDisplay:'0,02°', distanceDisplay:'0,10% (U) / 0,05% (UX)', powerDisplay:'8 W nominal',
+      applications:['AUVs pequenos','ROVs','USVs','Survey sem GNSS'] },
+    en:{ name:'SPRINT-Nav U/UX', short:'U/UX', cls:'Micro',
+      tagline:'The world’s smallest hybrid acoustic-inertial navigator — built for robotic platforms where every millimetre of payload space counts.',
+      dims:'Ø114–118 × 126 mm', weightDisplay:'2.3 kg air / 1.0 kg water', dvl:'500 kHz, bottom lock to 100 m',
+      headingDisplay:'0.15° (U) / 0.08° (UX)', pitchRollDisplay:'0.02°', distanceDisplay:'0.10% (U) / 0.05% (UX)', powerDisplay:'8 W nominal',
+      applications:['Small AUVs','ROVs','USVs','GNSS-denied survey'] }
+  }
+];
+
+const FAMILY_ORDER = ['dp','sprint','u','m','nav','ffx'];
+PRODUCTS.sort((a,b)=> FAMILY_ORDER.indexOf(a.id) - FAMILY_ORDER.indexOf(b.id));
+
+let LANG = 'pt';
+let activeId = PRODUCTS[0].id;
+let slotA = PRODUCTS[0].id;
+let slotB = PRODUCTS[1].id;
+
+function tr(p){ return p[LANG]; }
+function t(){ return I18N[LANG]; }
+function tagRow(list){ return list.join(' · '); }
+
+/* ================= splash -> language -> app sequence ================= */
+function crossfadeOut(el, cb){
+  if(REDUCE_MOTION){ el.hidden = true; cb(); return; }
+  el.animate([{opacity:1},{opacity:0}], {duration:420, easing:EASE_IN, fill:'forwards'}).finished.then(()=>{
+    el.hidden = true; cb();
+  });
+}
+function crossfadeIn(el){
+  el.hidden = false;
+  if(REDUCE_MOTION){ el.style.opacity = 1; return; }
+  el.animate([{opacity:0},{opacity:1}], {duration:560, easing:EASE_OUT, fill:'forwards'});
+}
+
+document.getElementById('splashBtn').addEventListener('click', ()=>{
+  sndConfirm();
+  crossfadeOut(document.getElementById('splash'), ()=>{
+    crossfadeIn(document.getElementById('langSelect'));
+  });
+});
+
+document.querySelectorAll('.lang-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    sndConfirm();
+    LANG = btn.dataset.lang;
+    crossfadeOut(document.getElementById('langSelect'), ()=>{
+      const app = document.getElementById('app');
+      app.hidden = false;
+      applyLanguage();
+      window.dispatchEvent(new Event('resize'));
+      if(REDUCE_MOTION){ app.style.opacity = 1; }
+      else app.animate([{opacity:0},{opacity:1}], {duration:620, easing:EASE_OUT, fill:'forwards'}).finished.then(()=>{ app.style.opacity = 1; });
+    });
+  });
+});
+
+document.querySelectorAll('.lang-toggle button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{ sndTab(); LANG = btn.dataset.lang; applyLanguage(); });
+});
+
+/* ================= theme (light/dark) ================= */
+function syncThemeIcon(){
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  /* toggleAttribute (not the .hidden IDL property) — SVGElement's reflection
+     of .hidden is inconsistent, so setting the property silently no-ops. */
+  document.getElementById('themeIconSun').toggleAttribute('hidden', dark);
+  document.getElementById('themeIconMoon').toggleAttribute('hidden', !dark);
+  const logoSrc = dark ? 'assets/logo/sonardyne-logo-white.svg' : 'assets/logo/sonardyne-logo.svg';
+  document.querySelectorAll('.theme-logo').forEach(img=>{ img.src = logoSrc; });
+}
+document.getElementById('themeToggleBtn').addEventListener('click', ()=>{
+  sndTab();
+  const root = document.documentElement;
+  const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  root.setAttribute('data-theme', next);
+  try{ localStorage.setItem('sprintnav-theme', next); }catch(err){ /* private mode — theme just won't persist */ }
+  syncThemeIcon();
+});
+syncThemeIcon();
+
+document.getElementById('backToSplashBtn').addEventListener('click', ()=>{
+  sndBack();
+  const app = document.getElementById('app');
+  crossfadeOut(app, ()=>{
+    crossfadeIn(document.getElementById('splash'));
+  });
+});
+
+/* ================= i18n paint ================= */
+function applyLanguage(){
+  const dict = t();
+  document.getElementById('brandTitle').textContent = dict.brandTitle;
+  document.getElementById('ledeText').textContent = dict.lede;
+  document.getElementById('labelFamily').textContent = dict.labelFamily;
+  document.getElementById('tabFamilyLabel').textContent = dict.tabFamily;
+  document.getElementById('tabCompareLabel').textContent = dict.tabCompare;
+  document.getElementById('tabGuideLabel').textContent = dict.tabGuide;
+  document.getElementById('tabAccuracyLabel').textContent = dict.tabAccuracy;
+  document.getElementById('tab3DLabel').textContent = dict.tab3d;
+  document.getElementById('labelPickerA').textContent = dict.pickerA;
+  document.getElementById('labelPickerB').textContent = dict.pickerB;
+  document.getElementById('labelGuide').textContent = dict.labelGuide;
+  document.getElementById('guideTitle').textContent = dict.guideTitle;
+  renderAccuracy();
+  document.getElementById('label3d').textContent = dict.label3d;
+  document.getElementById('title3d').textContent = dict.title3d;
+  document.getElementById('threeHint').textContent = dict.hint3d;
+  document.getElementById('footerNote').textContent = dict.footerNote;
+  document.querySelectorAll('.lang-toggle button').forEach(b=>b.classList.toggle('active', b.dataset.lang===LANG));
+
+  renderFilmstrip();
+  paintHero(PRODUCTS.find(x=>x.id===activeId));
+  renderThumbs();
+  renderCompare();
+  requestAnimationFrame(()=>{
+    const active = document.querySelector('.tab-btn.active');
+    if(active) moveTabIndicator(active);
+  });
+}
+
+/* ================= family stage ================= */
+function renderFilmstrip(){
+  const el = document.getElementById('filmstrip');
+  el.innerHTML = PRODUCTS.map(p => `
+    <button class="film-item ${p.id===activeId?'active':''}" data-id="${p.id}" role="option">
+      <img src="${p.image}" alt="${tr(p).name}">
+      <span class="film-label">${tr(p).short}</span>
+    </button>
+  `).join('');
+  el.querySelectorAll('.film-item').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ sndSelect(); selectProduct(btn.dataset.id); });
+  });
+}
+
+function updateFilmActive(){
+  document.querySelectorAll('.film-item').forEach(f=>{
+    f.classList.toggle('active', f.dataset.id === activeId);
+  });
+}
+
+function buildSpecList(p){
+  const d = tr(p), L = t().labels;
+  const rows = [
+    [L.depth, d.depthDisplay || (p.depthRatingM.toLocaleString(t().locale) + ' m')],
+    [L.dims, d.dims],
+    [L.weight, d.weightDisplay],
+    [L.dvl, d.dvl],
+    [L.heading, d.headingDisplay],
+    [L.pitchroll, d.pitchRollDisplay],
+    [L.distance, d.distanceDisplay],
+    [L.power, d.powerDisplay],
+  ];
+  if(d.stationKeeping) rows.push([L.stationKeeping, d.stationKeeping]);
+  else if(d.unaided) rows.push([L.unaided, d.unaided]);
+
+  const list = document.getElementById('specList');
+  const tierBtn = document.getElementById('tierBtn');
+  tierBtn.hidden = !d.tierTable;
+  tierBtn.textContent = L.tierBtn;
+  list.innerHTML = rows.map(([dt,dd])=>`<div class="spec-row"><dt>${dt}</dt><dd>${dd}</dd></div>`).join('')
+    + `<div class="spec-row wide"><dt>${L.applications}</dt><dd>${tagRow(d.applications)}</dd></div>`;
+
+  if(!REDUCE_MOTION){
+    list.querySelectorAll('.spec-row').forEach((row,i)=>{
+      row.animate([{opacity:0, transform:'translateY(8px)'},{opacity:1, transform:'translateY(0)'}],
+        {duration:420, delay:i*45, easing:EASE_OUT, fill:'both'});
+    });
+  }
+}
+
+const ACC_DATA = [
+  { k:'x',  label:'X*', dist:0.04, survey:0.01 },
+  { k:'s',  label:'S',  dist:0.06, survey:0.02 },
+  { k:'i',  label:'I',  dist:0.10, survey:0.03 },
+  { k:'m',  label:'M',  dist:0.20, survey:0.05 },
+  { k:'ux', label:'UX', dist:0.30, survey:0.05 },
+  { k:'u',  label:'U',  dist:0.45, survey:0.10 }
+];
+
+function renderAccuracy(){
+  const A = t().acc;
+  const fmt = v => v.toFixed(2).replace('.', A.dec) + '%';
+  const R = 1000, mx = 460, my = 470, sx = 1010, sy = 500;
+  const labelPos = k => k === 'u' ? -14 : 36;
+  const distRings = [...ACC_DATA].reverse().map((r,i)=>{
+    const rad = r.dist*R, ty = my + rad + labelPos(r.k);
+    return `<g class="ring" data-k="${r.k}" style="--i:${i}"><circle class="hit" cx="${mx}" cy="${my}" r="${rad}"/><circle class="line" cx="${mx}" cy="${my}" r="${rad}"/>${r.k==='x'?'':`<text x="${mx}" y="${ty}">${r.label}</text>`}</g>`;
+  }).join('');
+  const bySurvey = new Map();
+  ACC_DATA.forEach(r=>{ bySurvey.set(r.survey, [...(bySurvey.get(r.survey)||[]), r.k]); });
+  const surveyRings = [...bySurvey.entries()].sort((a,b)=>b[0]-a[0]).map(([v,keys],i)=>
+    `<g class="ring solid" data-k="${keys.join(' ')}" style="--i:${i+3}"><circle class="hit" cx="${sx}" cy="${sy}" r="${v*R}"/><circle class="line" cx="${sx}" cy="${sy}" r="${v*R}"/></g>`).join('');
+  const rows = ACC_DATA.map(r=>`<tr data-k="${r.k}"><th scope="row">${r.label}</th><td>${fmt(r.dist)}</td><td>${fmt(r.survey)}</td></tr>`).join('');
+
+  const layout = document.getElementById('accLayout');
+  layout.innerHTML = `
+    <div class="acc-copy">
+      <h2>${A.title}</h2>
+      <h3>${A.what}</h3>
+      <ul>${A.bullets.map((b,i)=>`<li>${b}${i===2?`<ul><li>${A.sub}</li></ul>`:''}</li>`).join('')}</ul>
+      <table class="acc-table">
+        <thead><tr><th></th><th>${A.colDist}</th><th>${A.colSurvey}</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <p class="acc-foot">${A.foot}</p>
+    </div>
+    <div class="acc-figure">
+      <svg class="acc-svg" viewBox="0 0 1240 950" role="img" aria-label="${A.aria}">
+        ${distRings}${surveyRings}
+        <text class="survey-label" x="${sx+78}" y="${sy+128}">${A.survey}</text>
+      </svg>
+    </div>`;
+
+  const setOn = keys => layout.querySelectorAll('[data-k]').forEach(el=>{
+    el.classList.toggle('on', !!keys && el.dataset.k.split(' ').some(k=>keys.includes(k)));
+  });
+  layout.onmouseover = e=>{ const el = e.target.closest('[data-k]'); setOn(el ? el.dataset.k.split(' ') : null); };
+  layout.onmouseleave = ()=>setOn(null);
+}
+
+function tierTableHtml(tt, onlyDiff){
+  const L = t().labels;
+  const groups = tt.groups.map(([g,items])=>[g, items.map(([sub,vals])=>[sub, vals, new Set(vals).size>1]).filter(it=>!onlyDiff||it[2])]).filter(([,items])=>items.length);
+  const body = groups.map(([g,items])=>items.map(([sub,vals,diff],i)=>
+    `<tr class="${i===0?'grp-start ':''}${diff?'diff':''}">`
+    + (i===0 ? `<th scope="rowgroup" class="grp"${sub===null?' colspan="2"':` rowspan="${items.length}"`}>${g}</th>` : '')
+    + (sub===null ? '' : `<th scope="row" class="sub">${sub}</th>`)
+    + vals.map(v=>`<td>${v}</td>`).join('') + '</tr>').join('')).join('');
+  return `<table class="tier-table"><thead><tr><th colspan="2">${L.performance}</th>${tt.cols.map(c=>`<th class="col">SPRINT-Nav ${c}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
+let tierReturnFocus = null;
+function paintTierModal(){
+  const p = PRODUCTS.find(x=>x.id===activeId), d = tr(p), L = t().labels;
+  document.getElementById('tierModalEyebrow').textContent = d.name;
+  document.getElementById('tierModalTitle').textContent = L.tierTitle;
+  document.getElementById('tierOnlyDiffLbl').textContent = L.tierOnlyDiff;
+  document.getElementById('tierClose').setAttribute('aria-label', L.tierClose);
+  document.getElementById('tierLegendDiff').textContent = L.tierLegendDiff;
+  document.getElementById('tierLegendSame').textContent = L.tierLegendSame;
+  document.getElementById('tierScroll').innerHTML = tierTableHtml(d.tierTable, document.getElementById('tierOnlyDiff').checked);
+}
+function openTierModal(){
+  const modal = document.getElementById('tierModal');
+  tierReturnFocus = document.activeElement;
+  paintTierModal();
+  modal.hidden = false;
+  document.getElementById('tierScroll').scrollTop = 0;
+  if(!REDUCE_MOTION){
+    modal.animate([{opacity:0},{opacity:1}], {duration:220, easing:EASE_OUT});
+    document.getElementById('tierPanel').animate([{opacity:0, transform:'translateY(16px) scale(.98)'},{opacity:1, transform:'none'}], {duration:360, easing:EASE_OUT});
+  }
+  document.getElementById('tierClose').focus();
+}
+function closeTierModal(){
+  const modal = document.getElementById('tierModal');
+  if(modal.hidden) return;
+  modal.hidden = true;
+  if(tierReturnFocus && tierReturnFocus.focus) tierReturnFocus.focus();
+}
+document.getElementById('tierBtn').addEventListener('click', ()=>{ sndSelect(); openTierModal(); });
+document.getElementById('tierClose').addEventListener('click', closeTierModal);
+document.getElementById('tierOnlyDiff').addEventListener('change', paintTierModal);
+document.getElementById('tierModal').addEventListener('click', e=>{ if(e.target.id === 'tierModal') closeTierModal(); });
+document.addEventListener('keydown', e=>{ if(e.key === 'Escape') closeTierModal(); });
+
+function paintHero(p){
+  const d = tr(p);
+  const img = document.getElementById('heroImg');
+  img.src = p.image; img.alt = d.name;
+  document.getElementById('stageWord').textContent = d.short;
+  document.getElementById('heroCls').textContent = d.cls;
+  document.getElementById('heroName').textContent = d.name;
+  document.getElementById('heroPill').textContent = d.depthDisplay || (p.depthRatingM.toLocaleString(t().locale) + ' m');
+  document.getElementById('heroTagline').textContent = d.tagline;
+  buildSpecList(p);
+}
+
+async function selectProduct(id){
+  if(id === activeId) return;
+  activeId = id;
+  const p = PRODUCTS.find(x=>x.id===id);
+  updateFilmActive();
+
+  const img = document.getElementById('heroImg');
+  const word = document.getElementById('stageWord');
+  const copy = document.querySelector('.stage-copy');
+
+  if(REDUCE_MOTION){ paintHero(p); return; }
+
+  await Promise.all([
+    img.animate([{opacity:1, transform:'scale(1)', filter:'blur(0px)'},{opacity:0, transform:'scale(.94)', filter:'blur(10px)'}],
+      {duration:260, easing:EASE_IN, fill:'forwards'}).finished,
+    word.animate([{opacity:1},{opacity:0}], {duration:200, easing:EASE_IN, fill:'forwards'}).finished,
+    copy.animate([{opacity:1, transform:'translateY(0)'},{opacity:0, transform:'translateY(-6px)'}],
+      {duration:200, easing:EASE_IN, fill:'forwards'}).finished,
+  ]);
+
+  paintHero(p);
+  emitCenterPing();
+
+  /* Large product photos (500 KB–1.7 MB) can still be decoding on a slow
+     connection; fading the <img> in before that finishes could paint a
+     solid mask-colored block instead of the photo. Text/word fade in right
+     away regardless — only the image itself waits on its own decode. */
+  const fadeInImage = ()=> img.animate(
+    [{opacity:0, transform:'scale(1.06)', filter:'blur(10px)'},{opacity:1, transform:'scale(1)', filter:'blur(0px)'}],
+    {duration:620, easing:EASE_OUT, fill:'forwards'}
+  );
+  img.decode().then(fadeInImage, fadeInImage);
+  word.animate([{opacity:0},{opacity:1}], {duration:700, delay:80, easing:EASE_OUT, fill:'forwards'});
+  copy.animate([{opacity:0, transform:'translateY(14px)'},{opacity:1, transform:'translateY(0)'}],
+    {duration:520, delay:120, easing:EASE_OUT, fill:'forwards'});
+}
+
+/* ================= sonar field: ambient pings + touch-reactive ripples + tilt =================
+   Sonardyne builds sonar/acoustic navigation systems, so the product stage doubles as a small
+   demo of the idea — concentric pings sweep outward on their own, and dragging a finger across
+   the image sends its own ping (plus a subtle 3D tilt) from wherever the touch lands. */
+let emitCenterPing = ()=>{};
+
+function initSonarField(){
+  const wrap = document.getElementById('stageWrap');
+  const canvas = document.getElementById('sonarField');
+  const tiltWrap = document.getElementById('tiltWrap');
+  const ctx = canvas.getContext('2d');
+  let w = 0, h = 0;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  function resize(){
+    const r = wrap.getBoundingClientRect();
+    w = r.width; h = r.height;
+    canvas.width = Math.max(1, w * dpr);
+    canvas.height = Math.max(1, h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  let pings = [];
+  function addPing(x, y, strong){ pings.push({ x, y, t0: performance.now(), strong: !!strong }); }
+  emitCenterPing = ()=> addPing(w/2, h/2, true);
+
+  (function ambientLoop(){
+    if(!REDUCE_MOTION) addPing(w/2, h/2, false);
+    setTimeout(ambientLoop, 2600 + Math.random()*500);
+  })();
+
+  /* The rAF loop below re-schedules itself at the very end of frame(); if any
+     statement above that were ever to throw, the chain would die silently
+     with no visible error — the classic way a canvas loop "just stops" after
+     some later interaction. Wrapping the body means a bad frame is skipped
+     instead of ending the animation for good. */
+  function frame(now){
+    try{
+      ctx.clearRect(0, 0, w, h);
+      const maxR = Math.max(w, h) * 0.62;
+      pings = pings.filter(p=>{
+        const age = (now - p.t0) / 1000;
+        const dur = p.strong ? 1.5 : 2.4;
+        if(age <= 0 || age > dur) return age > 0;
+        const k = Math.min(1, Math.max(0, age / dur));
+        const r = Math.max(0.001, k * maxR * (p.strong ? 0.65 : 1));
+        const alpha = Math.max(0, (1 - k) * (p.strong ? 0.5 : 0.2));
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(47,111,143,${alpha.toFixed(3)})`;
+        ctx.lineWidth = p.strong ? 2 : 1.1;
+        ctx.stroke();
+        return true;
+      });
+    }catch(err){ /* skip this frame, keep the loop alive */ }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  function localPoint(e){
+    const r = wrap.getBoundingClientRect();
+    const src = e.touches ? e.touches[0] : e;
+    return { x: src.clientX - r.left, y: src.clientY - r.top, rw: r.width, rh: r.height };
+  }
+
+  let lastEmit = 0;
+  function onMove(e){
+    const { x, y, rw, rh } = localPoint(e);
+    if(!rw || !rh) return;
+    const now = performance.now();
+    if(now - lastEmit > 240){ addPing(x, y, true); lastEmit = now; }
+    if(!REDUCE_MOTION){
+      const dx = (x / rw - 0.5) * 2, dy = (y / rh - 0.5) * 2;
+      tiltWrap.style.transform = `rotateX(${(-dy*6).toFixed(2)}deg) rotateY(${(dx*8).toFixed(2)}deg)`;
+    }
+  }
+  function onEnd(){ tiltWrap.style.transform = 'rotateX(0deg) rotateY(0deg)'; }
+
+  wrap.addEventListener('pointerdown', (e)=>{ const {x,y} = localPoint(e); addPing(x, y, true); });
+  wrap.addEventListener('pointermove', (e)=>{ if(e.buttons || e.pointerType === 'touch') onMove(e); });
+  wrap.addEventListener('pointerleave', onEnd);
+  wrap.addEventListener('pointerup', onEnd);
+  wrap.addEventListener('touchmove', onMove, { passive:true });
+  wrap.addEventListener('touchend', onEnd);
+}
+
+/* ================= compare ================= */
+function renderThumbs(){
+  const thumbsA = document.getElementById('thumbsA');
+  const thumbsB = document.getElementById('thumbsB');
+  thumbsA.innerHTML = PRODUCTS.map(p=>`<button class="thumb-flat ${p.id===slotA?'selected':''}" ${p.id===slotB?'disabled':''} data-id="${p.id}" title="${tr(p).name}"><img src="${p.image}" alt="${tr(p).name}"></button>`).join('');
+  thumbsB.innerHTML = PRODUCTS.map(p=>`<button class="thumb-flat ${p.id===slotB?'selected':''}" ${p.id===slotA?'disabled':''} data-id="${p.id}" title="${tr(p).name}"><img src="${p.image}" alt="${tr(p).name}"></button>`).join('');
+  thumbsA.querySelectorAll('.thumb-flat').forEach(c=>c.addEventListener('click', ()=>{ sndSelect(); slotA=c.dataset.id; renderThumbs(); renderCompare(); }));
+  thumbsB.querySelectorAll('.thumb-flat').forEach(c=>c.addEventListener('click', ()=>{ sndSelect(); slotB=c.dataset.id; renderThumbs(); renderCompare(); }));
+}
+
+function miniThumb(p){ return `<div class="thumb-mini"><img src="${p.image}" alt="${tr(p).name}"></div>`; }
+
+function renderCompare(){
+  const a = PRODUCTS.find(x=>x.id===slotA);
+  const b = PRODUCTS.find(x=>x.id===slotB);
+  const L = t().labels;
+  const METRICS = [
+    { label:L.depth, get:p=>tr(p).depthDisplay || p.depthRatingM, format:v=>typeof v==='number' ? v.toLocaleString(t().locale)+' m' : v },
+    { label:L.dims, get:p=>tr(p).dims, format:v=>v },
+    { label:L.weight, get:p=>tr(p).weightDisplay, format:v=>v },
+    { label:L.dvl, get:p=>tr(p).dvl, format:v=>v },
+    { label:L.heading, get:p=>tr(p).headingDisplay, format:v=>v, leaderKey:'headingAccuracyDeg', better:'lower' },
+    { label:L.pitchroll, get:p=>tr(p).pitchRollDisplay, format:v=>v, leaderKey:'pitchRollDeg', better:'lower' },
+    { label:L.distance, get:p=>tr(p).distanceDisplay, format:v=>v, leaderKey:'distanceAccuracyPct', better:'lower' },
+    { label:L.power, get:p=>tr(p).powerDisplay, format:v=>v, leaderKey:'powerW', better:'lower' },
+    { label:`${L.unaided} / ${L.stationKeeping}`, get:p=>tr(p).unaided||tr(p).stationKeeping||'—', format:v=>v },
+    { label:L.applications, get:p=>tr(p).applications.join(', '), format:v=>v }
+  ];
+  const table = document.getElementById('compareTable');
+  const rows = METRICS.map(m=>{
+    const va = m.get(a), vb = m.get(b);
+    let aLead=false, bLead=false, isDiff = va !== vb;
+    if(m.leaderKey && a[m.leaderKey]!==undefined && b[m.leaderKey]!==undefined && a[m.leaderKey]!==b[m.leaderKey]){
+      const better = m.better==='lower' ? Math.min(a[m.leaderKey], b[m.leaderKey]) : Math.max(a[m.leaderKey], b[m.leaderKey]);
+      aLead = a[m.leaderKey]===better; bLead = b[m.leaderKey]===better;
+    }
+    return `<tr>
+      <th scope="row">${m.label}</th>
+      <td class="${isDiff?'diff':''} ${aLead?'lead':''}">${aLead?'<span class="lead-mark">●</span>':''}${m.format(va)}</td>
+      <td class="${isDiff?'diff':''} ${bLead?'lead':''}">${bLead?'<span class="lead-mark">●</span>':''}${m.format(vb)}</td>
+    </tr>`;
+  }).join('');
+
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th></th>
+        <th><div class="col-head">${miniThumb(a)}<div><div class="fr-name">${tr(a).name}</div><div class="fr-class">${tr(a).cls}</div></div></div></th>
+        <th><div class="col-head">${miniThumb(b)}<div><div class="fr-name">${tr(b).name}</div><div class="fr-class">${tr(b).cls}</div></div></div></th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  `;
+}
+
+/* ================= tabs ================= */
+let switching = false;
+async function switchView(view){
+  if(switching) return;
+  const current = document.querySelector('.view:not([hidden])');
+  const target = document.getElementById(view);
+  if(current === target) return;
+  switching = true;
+  if(REDUCE_MOTION){
+    current.hidden = true; target.hidden = false;
+  } else {
+    await current.animate([{opacity:1, transform:'translateY(0)'},{opacity:0, transform:'translateY(10px)'}],
+      {duration:220, easing:EASE_IN, fill:'forwards'}).finished;
+    current.hidden = true;
+    target.hidden = false;
+    target.animate([{opacity:0, transform:'translateY(12px)'},{opacity:1, transform:'translateY(0)'}],
+      {duration:460, easing:EASE_OUT, fill:'forwards'});
+  }
+  switching = false;
+}
+
+function moveTabIndicator(btn){
+  const bar = document.querySelector('.tabbar');
+  const indicator = document.getElementById('tabIndicator');
+  const barRect = bar.getBoundingClientRect();
+  const btnRect = btn.getBoundingClientRect();
+  indicator.style.width = (btnRect.width * 0.5) + 'px';
+  indicator.style.transform = `translateX(${btnRect.left - barRect.left + btnRect.width*0.25}px)`;
+}
+
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    if(!btn.classList.contains('active')) sndTab();
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    moveTabIndicator(btn);
+    switchView(btn.dataset.view);
+    if(btn.dataset.view === 'threed'){
+      requestAnimationFrame(()=> requestAnimationFrame(()=> window.dispatchEvent(new Event('resize'))));
+    }
+  });
+});
+
+window.addEventListener('resize', ()=>{
+  const active = document.querySelector('.tab-btn.active');
+  if(active) moveTabIndicator(active);
+});
+
+initSonarField();
+requestAnimationFrame(()=> moveTabIndicator(document.querySelector('.tab-btn.active')));
+</script>
+
+<!-- ================= 3D interactive model (Three.js) ================= -->
+<script>
+(function(){
+  if(typeof THREE === 'undefined' || typeof THREE.OrbitControls === 'undefined') return; // three.js/addon failed to load (offline / blocked CDN)
+  const wrap = document.getElementById('threeCanvasWrap');
+  const canvas = document.getElementById('threeCanvas');
+  const loading = document.getElementById('threeLoading');
+  const section = document.getElementById('threed');
+  if(!wrap || !canvas || !section) return;
+
+  const REDUCE_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(38, 1, 0.05, 100);
+  camera.position.set(2.65, 1.2, 3.25);
+
+  let renderer;
+  try{
+    renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true, powerPreference:'high-performance' });
+  }catch(err){ if(loading) loading.textContent = 'WebGL indisponível'; return; }
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
+
+  /* No PMREM/environment map here — this build intentionally skips three.js's
+     ES-module addons (RoomEnvironment, and OrbitControls would otherwise come
+     from examples/jsm too) because `import` is blocked by browsers when the
+     page is opened directly as a file:// document instead of via a server.
+     A few extra lights stand in for the reflections an env map would add. */
+  const key = new THREE.DirectionalLight(0xffffff, 1.6);
+  key.position.set(3, 5, 2);
+  scene.add(key);
+  const fill = new THREE.DirectionalLight(0x9fd8ff, 0.6);
+  fill.position.set(-4, 2, -3);
+  scene.add(fill);
+  const rim = new THREE.DirectionalLight(0xffffff, 0.5);
+  rim.position.set(-1, -2, -4);
+  scene.add(rim);
+  scene.add(new THREE.AmbientLight(0x556677, 0.55));
+  scene.add(new THREE.HemisphereLight(0xdfe9f5, 0x1a2230, 0.9));
+
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.target.set(0, 0.05, 0);
+  controls.enablePan = false;
+  controls.minDistance = 2.0;
+  controls.maxDistance = 5.8;
+  controls.minPolarAngle = 0.35;
+  controls.maxPolarAngle = Math.PI - 0.35;
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.autoRotate = !REDUCE_MOTION;
+  controls.autoRotateSpeed = 1.1;
+  controls.update();
+  controls.addEventListener('start', ()=>{ controls.autoRotate = false; });
+
+  /* ---------- SPRINT-Nav U/UX procedural model ----------
+     Modelled to match the Sonardyne SPRINT-Nav U/UX reference photo/drawing
+     rather than the datasheet's numeric dimensions: the transducer face
+     (bottom) reads visibly WIDER than the mounting face (top), flaring out
+     like the real housing. Bottom = transducer end: 4x DVL heads (Janus
+     array, 45°), 4x M3 holes for the optional mounting ring, yellow
+     orientation mark. Top = mounting end: 4x M5 bolts, centre datum mark,
+     penetrator cable exiting and draping down the side. */
+  const device = new THREE.Group();
+  scene.add(device);
+
+  const metalMat = new THREE.MeshStandardMaterial({ color:0xdfe3e5, metalness:0.75, roughness:0.32 });
+  const capMat   = new THREE.MeshStandardMaterial({ color:0xc4cacd, metalness:0.88, roughness:0.3 });
+  const darkMat  = new THREE.MeshStandardMaterial({ color:0x1b1d21, metalness:0.35, roughness:0.55 });
+  const boltMat  = new THREE.MeshStandardMaterial({ color:0x2a2d31, metalness:0.7, roughness:0.4 });
+  const markMat  = new THREE.MeshStandardMaterial({ color:0xf2c300, metalness:0.1, roughness:0.5 });
+
+  const HEIGHT = 1.2;
+  const RADIUS_BOTTOM = 0.6; // transducer end — the wider face where the sonar fires, per the reference image
+  const RADIUS_TOP = RADIUS_BOTTOM * 0.93; // mounting end — a touch narrower, per the reference image
+
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(RADIUS_TOP, RADIUS_BOTTOM, HEIGHT, 96), metalMat);
+  device.add(body);
+
+  function bevelRing(radius){
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(radius * 0.985, radius * 0.035, 12, 96),
+      capMat
+    );
+    ring.rotation.x = Math.PI / 2;
+    return ring;
+  }
+
+  function radiusAtY(y){
+    const t = (y + HEIGHT / 2) / HEIGHT;
+    return THREE.MathUtils.lerp(RADIUS_BOTTOM, RADIUS_TOP, t);
+  }
+
+  function makeBandTexture(){
+    const c = document.createElement('canvas'); c.width = 1536; c.height = 320;
+    const ctx = c.getContext('2d');
+    /* The band wraps the full 360° of the cylinder, so the brand mark is
+       painted twice (front and back) — otherwise it would only ever face
+       the camera from one specific rotation angle. */
+    function paintBlock(cx, logoImg){
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      // fit "SPRINT-Nav" to most of this block's half of the band, so the
+      // mark stays visible through nearly the whole rotation instead of
+      // only at the two exact angles it's centred on.
+      const targetW = c.width * 0.42;
+      let fontSize = 100;
+      ctx.font = `700 ${fontSize}px Satoshi, Helvetica, Arial, sans-serif`;
+      const measured = ctx.measureText('SPRINT-Nav').width;
+      fontSize = Math.round(fontSize * (targetW / measured));
+      ctx.font = `700 ${fontSize}px Satoshi, Helvetica, Arial, sans-serif`;
+
+      let logoDrawn = false;
+      if(logoImg && logoImg.naturalWidth){
+        try{
+          const logoH = fontSize * 0.62, logoW = logoH * (logoImg.naturalWidth / logoImg.naturalHeight);
+          ctx.drawImage(logoImg, cx - logoW / 2, c.height * 0.25 - logoH / 2, logoW, logoH);
+          logoDrawn = true;
+        }catch(err){ /* SVG failed to rasterize — fall back to text below */ }
+      }
+      if(!logoDrawn){
+        ctx.fillStyle = 'rgba(255,255,255,.9)';
+        ctx.font = `700 ${Math.round(fontSize * 0.5)}px Satoshi, Helvetica, Arial, sans-serif`;
+        ctx.fillText('Sonardyne', cx, c.height * 0.25);
+        ctx.font = `700 ${fontSize}px Satoshi, Helvetica, Arial, sans-serif`;
+      }
+      ctx.fillStyle = 'rgba(255,255,255,.95)';
+      ctx.fillText('SPRINT-Nav', cx, c.height * 0.68);
+    }
+    function paint(logoImg){
+      ctx.clearRect(0, 0, c.width, c.height);
+      ctx.fillStyle = '#1f2f66'; ctx.fillRect(0, 0, c.width, c.height);
+      paintBlock(c.width * 0.25, logoImg);
+      paintBlock(c.width * 0.75, logoImg);
+    }
+    paint(null);
+    const tex = new THREE.CanvasTexture(c);
+    tex.encoding = THREE.sRGBEncoding;
+    tex.anisotropy = 8;
+    const logoImg = new Image();
+    logoImg.onload = ()=>{ paint(logoImg); tex.needsUpdate = true; };
+    logoImg.onerror = ()=>{ paint(null); tex.needsUpdate = true; };
+    // Inlined as a data: URI (not a normal file path) so that drawImage()
+      // below never taints the canvas — file:// pages treat any other local
+      // file as a foreign origin for canvas readback, which would otherwise
+      // break the WebGL texture upload with a SecurityError.
+      logoImg.src = 'data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4gPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiB3aWR0aD0iMTgyIiBoZWlnaHQ9IjQwIiB2aWV3Qm94PSIwIDAgMTgyIDQwIiBmaWxsPSJub25lIj48cmVjdCB3aWR0aD0iMTgyIiBoZWlnaHQ9IjQwIiBmaWxsPSJ1cmwoI3BhdHRlcm4wKSI+PC9yZWN0PjxkZWZzPjxwYXR0ZXJuIGlkPSJwYXR0ZXJuMCIgcGF0dGVybkNvbnRlbnRVbml0cz0ib2JqZWN0Qm91bmRpbmdCb3giIHdpZHRoPSIxIiBoZWlnaHQ9IjEiPjx1c2UgeGxpbms6aHJlZj0iI2ltYWdlMF81OTlfMTMxMCIgdHJhbnNmb3JtPSJtYXRyaXgoMC4wMDExMTExMSAwIDAgMC4wMDUwMjc3OCAwIDAuMDgwMTExMSkiPjwvdXNlPjwvcGF0dGVybj48aW1hZ2UgaWQ9ImltYWdlMF81OTlfMTMxMCIgd2lkdGg9IjkwMCIgaGVpZ2h0PSIxNzIiIHhsaW5rOmhyZWY9ImRhdGE6aW1hZ2UvcG5nO2Jhc2U2NCxpVkJPUncwS0dnb0FBQUFOU1VoRVVnQUFBNFFBQUFDc0NBWUFBQUFqV1dMOUFBQUFCR2RCVFVFQUFMR1BDL3hoQlFBQUNrbHBRME5RYzFKSFFpQkpSVU0yTVRrMk5pMHlMakVBQUVpSm5WTjNXSlAzRmo3ZjkyVVBWa0xZOExHWGJJRUFJaU9zQ01nUVdhSVFrZ0JoaEJBU1FNV0ZpQXBXRkJVUm5FaFZ4SUxWQ2tpZGlPS2dLTGhuUVlxSVdvdFZYRGp1SDl5bnRYMTY3KzN0KzlmN3ZPZWM1L3pPZWM4UGdCRVNKcEhtb21vQU9WS0ZQRHJZSDQ5UFNNVEp2WUFDRlVqZ0JDQVE1c3ZDWndYRkFBRHdBM2w0Zm5Td1Avd0JyMjhBQWdCdzFTNGtFc2ZoLzRPNlVDWlhBQ0NSQU9BaUV1Y0xBWkJTQU1ndVZNZ1VBTWdZQUxCVHMyUUtBSlFBQUd4NWZFSWlBS29OQU96MFNUNEZBTmlwazl3WEFOaWlIS2tJQUkwQkFKa29SeVFDUUxzQVlGV0JVaXdDd01JQW9LeEFJaTRFd0s0QmdGbTJNa2NDZ0wwRkFIYU9XSkFQUUdBQWdKbENMTXdBSURnQ0FFTWVFODBESUV3RG9ERFN2K0NwWDNDRnVFZ0JBTURMbGMyWFM5SXpGTGlWMEJwMzh2RGc0aUhpd215eFFtRVhLUkJtQ2VRaW5KZWJJeE5JNXdOTXpnd0FBQnI1MGNIK09EK1E1K2JrNGVabTUyenY5TVdpL212d2J5SStJZkhmL3J5TUFnUUFFRTdQNzlwZjVlWFdBM0RIQWJCMXYydXBXd0RhVmdCbzMvbGRNOXNKb0ZvSzBIcjVpM2s0L0VBZW5xRlF5RHdkSEFvTEMrMGxZcUc5TU9PTFB2OHo0Vy9naTM3Mi9FQWUvdHQ2OEFCeG1rQ1pyY0NqZy8xeFlXNTJybEtPNThzRVFqRnU5K2NqL3NlRmYvMk9LZEhpTkxGY0xCV0s4VmlKdUZBaVRjZDV1VktSUkNISmxlSVM2WDh5OFIrVy9RbVRkdzBBcklaUHdFNjJCN1hMYk1CKzdnRUNpdzVZMG5ZQVFIN3pMWXdhQzVFQUVHYzBNbm4zQUFDVHYvbVBRQ3NCQU0yWHBPTUFBTHpvR0Z5b2xCZE14Z2dBQUVTZ2dTcXdRUWNNd1JTc3dBNmN3UjI4d0JjQ1lRWkVRQXdrd0R3UVFnYmtnQndLb1JpV1FSbFV3RHJZQkxXd0F4cWdFWnJoRUxUQk1UZ041K0FTWElIcmNCY0dZQmlld2hpOGhna0VRY2dJRTJFaE9vZ1JZbzdZSXM0SUY1bU9CQ0poU0RTU2dLUWc2WWdVVVNMRnlIS2tBcWxDYXBGZFNDUHlMWElVT1kxY1FQcVEyOGdnTW9yOGlyeEhNWlNCc2xFRDFBSjFRTG1vSHhxS3hxQnowWFEwRDEyQWxxSnIwUnEwSGoyQXRxS24wVXZvZFhRQWZZcU9ZNERSTVE1bWpObGhYSXlIUldDSldCb214eFpqNVZnMVZvODFZeDFZTjNZVkc4Q2VZZThJSkFLTGdCUHNDRjZFRU1Kc2dwQ1FSMWhNV0VPb0pld2p0Qks2Q0ZjSmc0UXh3aWNpazZoUHRDVjZFdm5FZUdJNnNaQllScXdtN2lFZUlaNGxYaWNPRTErVFNDUU95WkxrVGdvaEpaQXlTUXRKYTBqYlNDMmtVNlErMGhCcG5Fd202NUJ0eWQ3a0NMS0FyQ0NYa2JlUUQ1QlBrdnZKdytTM0ZEckZpT0pNQ2FJa1VxU1VFa28xWlQvbEJLV2ZNa0tab0twUnphbWUxQWlxaURxZldrbHRvSFpRTDFPSHFSTTBkWm9selpzV1E4dWtMYVBWMEpwcFoybjNhQy9wZExvSjNZTWVSWmZRbDlKcjZBZnA1K21EOUhjTURZWU5nOGRJWWlnWmF4bDdHYWNZdHhrdm1VeW1CZE9YbWNoVU1OY3lHNWxubUErWWIxVllLdllxZkJXUnloS1ZPcFZXbFg2VjU2cFVWWE5WUDlWNXFndFVxMVVQcTE1V2ZhWkdWYk5RNDZrSjFCYXIxYWtkVmJ1cE5xN09VbmRTajFEUFVWK2p2bC85Z3ZwakRiS0doVWFnaGtpalZHTzN4aG1OSVJiR01tWHhXRUxXY2xZRDZ5eHJtRTFpVzdMNTdFeDJCZnNiZGk5N1RGTkRjNnBtckdhUlpwM21jYzBCRHNheDRQQTUyWnhLemlIT0RjNTdMUU10UHkyeDFtcXRacTErclRmYWV0cSsybUx0Y3UwVzdldmE3M1Z3blVDZExKMzFPbTA2OTNVSnVqYTZVYnFGdXR0MXorbyswMlByZWVrSjljcjFEdW5kMFVmMWJmU2o5UmZxNzlidjBSODNNRFFJTnBBWmJERTRZL0RNa0dQb2E1aHB1Tkh3aE9Hb0VjdG91cEhFYUtQUlNhTW51Q2J1aDJmak5YZ1hQbWFzYnh4aXJEVGVaZHhyUEdGaWFUTGJwTVNreGVTK0tjMlVhNXBtdXRHMDAzVE16TWdzM0t6WXJNbnNqam5Wbkd1ZVliN1p2TnY4allXbFJaekZTb3MyaThlVzJwWjh5d1dXVFpiM3JKaFdQbFo1VnZWVzE2eEoxbHpyTE90dDFsZHNVQnRYbXd5Yk9wdkx0cWl0bTYzRWRwdHQzeFRpRkk4cDBpbjFVMjdhTWV6ODdBcnNtdXdHN1RuMllmWWw5bTMyengzTUhCSWQxanQwTzN4eWRIWE1kbXh3dk91azRUVERxY1NwdytsWFp4dG5vWE9kOHpVWHBrdVF5eEtYZHBjWFUyMm5pcWR1bjNyTGxlVWE3cnJTdGRQMW81dTdtOXl0MlczVTNjdzl4WDJyKzAwdW14dkpYY005NzBIMDhQZFk0bkhNNDUybm02ZkM4NURuTDE1MlhsbGUrNzBlVDdPY0pwN1dNRzNJMjhSYjRMM0xlMkE2UGoxbCtzN3BBejdHUGdLZmVwK0h2cWErSXQ4OXZpTisxbjZaZmdmOG52czcrc3Y5ai9pLzRYbnlGdkZPQldBQndRSGxBYjJCR29HekEyc0RId1NaQktVSE5RV05CYnNHTHd3K0ZVSU1DUTFaSDNLVGI4QVg4aHY1WXpQY1p5eWEwUlhLQ0owVldodjZNTXdtVEI3V0VZNkd6d2pmRUg1dnB2bE02Y3kyQ0lqZ1IyeUl1QjlwR1prWCtYMFVLU295cWk3cVViUlRkSEYwOXl6V3JPUlorMmU5anZHUHFZeTVPOXRxdG5KMlo2eHFiRkpzWSt5YnVJQzRxcmlCZUlmNFJmR1hFblFUSkFudGllVEUyTVE5aWVOekF1ZHNtak9jNUpwVWxuUmpydVhjb3JrWDV1bk95NTUzUEZrMVdaQjhPSVdZRXBleVArV0RJRUpRTHhoUDVhZHVUUjBUOG9TYmhVOUZ2cUtOb2xHeHQ3aEtQSkxtblZhVjlqamRPMzFEK21pR1QwWjF4ak1KVDFJcmVaRVprcmtqODAxV1JOYmVyTS9aY2RrdE9aU2NsSnlqVWcxcGxyUXIxekMzS0xkUFppc3JrdzNrZWVadHlodVRoOHIzNUNQNWMvUGJGV3lGVE5HanRGS3VVQTRXVEMrb0szaGJHRnQ0dUVpOVNGclVNOTltL3VyNUl3dUNGbnk5a0xCUXVMQ3oyTGg0V2ZIZ0lyOUZ1eFlqaTFNWGR5NHhYVks2WkhocDhOSjl5MmpMc3BiOVVPSllVbFh5YW5uYzhvNVNnOUtscFVNcmdsYzBsYW1VeWN0dXJ2UmF1V01WWVpWa1ZlOXFsOVZiVm44cUY1VmZySENzcUs3NHNFYTQ1dUpYVGwvVmZQVjViZHJhM2txM3l1M3JTT3VrNjI2czkxbS9yMHE5YWtIVjBJYndEYTBiOFkzbEcxOXRTdDUwb1hwcTlZN050TTNLelFNMVlUWHRXOHkyck52eW9UYWo5bnFkZjEzTFZ2MnRxN2UrMlNiYTFyL2RkM3Z6RG9NZEZUdmU3NVRzdkxVcmVGZHJ2VVY5OVc3UzdvTGRqeHBpRzdxLzVuN2R1RWQzVDhXZWozdWxld2YyUmUvcmFuUnZiTnl2djcreUNXMVNObzBlU0RwdzVadUFiOXFiN1pwM3RYQmFLZzdDUWVYQko5K21mSHZqVU9paHpzUGN3ODNmbVgrMzlRanJTSGtyMGpxL2Rhd3RvMjJnUGFHOTcraU1vNTBkWGgxSHZyZi9mdTh4NDJOMXh6V1BWNTZnblNnOThmbmtncFBqcDJTbm5wMU9QejNVbWR4NTkwejhtV3RkVVYyOVowUFBuajhYZE81TXQxLzN5ZlBlNTQ5ZDhMeHc5Q0wzWXRzbHQwdXRQYTQ5UjM1dy9lRklyMXR2NjJYM3krMVhQSzUwOUUzck85SHYwMy82YXNEVmM5ZjQxeTVkbjNtOTc4YnNHN2R1SnQwY3VDVzY5ZmgyOXUwWGR3cnVUTnhkZW85NHIveSsydjNxQi9vUDZuKzAvckZsd0czZytHREFZTS9EV1EvdkRnbUhudjZVLzlPSDRkSkh6RWZWSTBZampZK2RIeDhiRFJxOThtVE9rK0duc3FjVHo4cCtWdjk1NjNPcjU5Lzk0dnRMejFqODJQQUwrWXZQdjY1NXFmTnk3NnVwcnpySEk4Y2Z2TTU1UGZHbS9LM08yMzN2dU8rNjM4ZTlINWtvL0VEK1VQUFIrbVBIcDlCUDl6N25mUDc4TC9lRTgvc3RSempQQUFBQUlHTklVazBBQUhvbUFBQ0FoQUFBK2dBQUFJRG9BQUIxTUFBQTZtQUFBRHFZQUFBWGNKeTZVVHdBQUFBSmNFaFpjd0FBQ3hNQUFBc1RBUUNhbkJnQUFEZERTVVJCVkhpYzdkMXB0eVRKV1Ivd2Y4Mlo5MHA5Z3NubVBYU09NY1lZMjVOdGEwVkxWMnZmMEZRaklYYjY5amxzWWxIZmxvUTJaUG9PSUFtRXBLNEJvVjNxR2pDTDJUcUhSV0FMbUJoa0d4dHoxTkV6bzljS2ZZTHlpNmlhckh1N2xseWVKeUt5NnY4N3AwL2ZXNVg1UEhGcnlZd25Jekp6aEQzeHZKZi9UallIaXZrSU9VYWpmRDdDK1RsR0dVWW81aU5rYzR5QUVUQWZqVEFITUI4QmVQYm54WE1ZTFI2dmY2NmZ1M2U1K1FqQTZuS0x1TXNjR0MyZWV6YjN1dWRPTDNjMlAxYmF1OHlCRWJCWTAvODZxbi9HanA5SFp4L0hmUEhnNlo5SEd4Ni81MmZmeExvOS9ya0xkOTl4cVZyek5pVm5QcC92WG9pSWlJaUlhRS9kSDdzQlhiM3dKYjlkemtjbzV4ZzloQkh5T1pBRHZoNWhGeis2RWtBVnVRMUVSRVJFUkxURFlBckM3M25SbzhWOE5CclBSM2dJR0pVcytvaUlpSWlJaVBwSnVpQjg2UXVteFh5RWgrZWowUmlMRVVBaUlpSWlJaUtTa1Z4QitQTG4zY3puSTB6bW85SERZQkU0VkEvRmJnQVJFUkVSRWUyV1RFRjQ4VDkvb3NBSVYrYkFCT0M1Z0VSRVJFUkVSTnFpRjRTWC90UEh5emxHMStiK1FpUzBINHJZRFNBaUlpSWlvdDJpRllTdktEK2V6MGU0aVRuSytqWUd0Q2V5MkEwZ0lpS2lqUW9BTndUalhRVmdCT01SVVVEQkM4SlhQdlN4RE1DMU9lWkhJNHc0TFhSUFBmRE9MeFYzMy9FS0U3c2RSRVJFZEk4TXNqT3pNc0ZZUkJSWTBJTHdWZi94TjhjQWJzNjU0VGdFV2V3RzdLRU05WFRjMVovUE1nRGM0bWNISHJVbElpSWlvZzJDRklTditROGZ6ZVlZM1p3RDR4RDVLQWtsZUhQNlBncjQxL0E4L05WMnk1N3hISHhoYUFFOHVmaTU2aG1UaUlpSWlBWk92U0I4emIvL2FBbmdGamhpZEdnZWlOMkFnY25nRDVoY2hDLytNb1g0NVpySERYeGgrQmhZSUJJUkVSRWRITldDOExYZi9kRWpBRGQ0bnVCQnltTTNZQ0JLQUE5amNidVZDSXJGdnlQNFVjUVpmSEU0aTlNY0lpSWlJZ3JwUHEzQXIvdnUzN2dKMlN0WTBiQ1VzUnVRdUFtQU93QnVJMTR4ZUZZRzM1WmJBTDRCLy8zTjR6V0hpSWlJaUxTSkY0U3YvNjVmejE3LzczN2pDYVRUeWFWSUhuam5sNHJZYlVoUUNWOEkza1RheFZZR1AycDRCNzVBTENPMmhZaUlpSWlVaUJhRWIvaXVYOC9nUnp3S3liZzBXRVhzQmlRa2h5K3NiaVB0UW5DZE1YeTcrZDBtSWlJaTJqTmlCZUViL3kyTFFUcGpoUE94bTVDSU1ZQW5NUHlyN0pid2Y4ZE44Q0pSUkVSRVJIdEJwQ0I4NDNkK0pBUG1MQWJwckRKMkF4SndFL3QzbGQwSi9GVFNvN2pOSUNJaUlxSytlaGVFYi9yT2oyVGd5Q0N0VjhSdVFFUVowcnBnakxRTS9xSXp0N0ZmeFM0UkVSSFJRZWsvUWpqSHpkRmhkL3hwaXdmZTlhVXlkaHNpeU9BTHBUSnVNNElvNFVjTHk3ak5JQ0lpSXFJdWVoV0UzL3R2UG53VHd6OHZpblNWc1JzUVdJYkRHekhQNFAvbW83ak5JQ0lpSXFLMk9oZUViLzZPRDArd3Y5UGhTTTVEc1JzUTJBMGNWakc0NmdiOE9aTkVSRVJFTkJDZENzSTNmOGVIQy9DbTg5Uk0rY0M3dnBqRmJrUWdSK0JCa2dsNFhpRVJFUkhSWUxRdUNCLysxeC9LTUovenN2UFVSaG03QVFFVTRFR1NwVHgyQTRpSWlJaW9tUzRqaE5kd3VGUGlxSnVMc1JzUUFLZEsxaTREY0xFYlFVUkVSRVM3dFNvSUgvNzJENVhnaFNPb3ZUSjJBNVFkZ1FkSmxxNERxR0kzZ29pSWlJaWFhVlVRampnS1F0M2tEN3pyaTBYc1Jpako0RWZOQ1RBQWppTzNnWWlJaUloYXVML3BncE52LzdWajhOd2c2bTRNWHpEc213bjB6NmQxQUdZQW5vUi9EUTAyVDhrc0YvOFhBTTR2L2krVTJyWEtBYmdVSUE4UkVSRVJDV3BVRUY3K1Y3K1d6K2U0Z3BGMmMyaVBYY1Iramg1ZFVZeGRBWGdFdmhoc3M4N3EvMHNsL0hzd2hzNkJuY3NBckVKY0lpSWlJbExVZE1yb3RSR3ZLa3A5akZBODhPNHY1ckdiSWF5RVRuSGw0RWZiTHFCZE1iaE5CZUFxZ0hNQUhnUndBcmtMdjB3aDEwNGlJaUlpQ21oblFmaDlELzVxRHQ1YmpRU01kRWZUWW5oWUlhYUJMOXBtQ3JGWGMxd0Y4Rno0a1QzVEk1WmR4Q0lpSWlLaUFXb3lRc2dMWnBDVWNld0dDQ3VGNHhuNFVVRW5ISGViS2Z5STRRVjBLd3d2Z2JlWUlDSWlJaHFzclFVaFJ3ZEpXSjYvK3d0bDdFWUl5U0UvWFRUbS9mc3ErTUt3VFJ1dVlqOHZGRVJFUkVSME1MWVdoS001UndkSm5NWTB5eGhLNFhoVHBGRmNUZUducko3c1dLNXFzQXdSRVJFUkpXNWpRZmlXZ3FPRHBHS2N2L3NMV2V4R0NNaUY0MTBYanRlSGd4LzkyelFkMUdGL2J6R1J3UmY3SlhpYkhXMEYvT3RjUkcxRmVuTFVuOEVpWWpzT1NZRTBMNXhYZ3A4REdwNE05V2MzaTlpT1ZKVklzSSt4N2JZVGsxQ05vSU9Td1o5TE9JM2FpdjdPQzhheVNQT1dEVFA0a2NEYk9OMGhpVG0xdGE5aThTOEg4TkRpc2JMaHVuYnh6d0M0dS9pL0VtclhQc3BRZDJiUHIveStpNEgvZkQyTytqVjJvaTJMSTBkZDdEMEg5WGVxYkJuSHdMOGVGdlhuMENETmJVZ3FTdmpYK3dIVTMvLzh6RElYRVA3N25LUHVHRDRFL3gwcEdxeFh3Yi9mVHk1K05zTHRJdG9sUS8yOWVnak5UcU94cVBlaGoyTi90dTFubFl0L0Q4Qy9KZ1dhRmNZRzliN1BvdjZlQjdHdElOU1kybGZCLzhGSENyRTNjZkQzY3J1Q2NFY3Fab3U4azBENXJNODVueURFM3ppSHd3aFRkRDl5ZVEzREx3Z3p3VmhXTUpZMEIzOXU0VTM0ei9NSmhuV0xpUnoxUFJoTDlIdmY4cFY0cXlyNERmZ01hWFRNYmtOdVNuUGJ1OC9tOEFkOEhrYjNVWTNsZXVYS1l3YkFvL0N2c2UwWU42UU1wenRMcFdEc1lzUGpEcWMvaTFZd1p4dkhrTDBZWFpjN0lPZnduOFBsOXo0bFk5VHR5anZHS00vODd1RGY4MGVSMWtHcU1ZQmJTckhQSWExdHdUZWcwLzk2THRZWFRSTGIrUXIrUUVoVE9mcHQzM1BVKzlDanhXTUd3OXEycjFPZy9sNFhQZU1BcDk5WEMvOCtQUWJsdnRmYUthTnZQZjhyWThnUFpkb3YvTVgzWC9qQzQyKzlpckRuSGwxKy9JdXZQNFlmMVFqQi9LK1B2dXpTLy83b3l5N1BBMjJZNThDRlo5Ny9ncXNJOXpjKzh0VHh4YXRvdHlHcGpaRG52N2czRjVlUjhIanNCalJ3R1g0YTZSQnVNWkhCRjY5UEFMZ0RYOHlPb1hld3BJVHZBQy96M1VCaVUwRUNHTU4zVUpaL2Z5RWN2MWpFdlFQWmdsZFNBVjhNUFFIZk9id0YvN2tvQStYUDROK0g1ZXYwQkh5bkt3dVVQd1VUblA0Y2xqRWJzeUtIYjgveWN6R0I3RFlpdyttL2ZTSVl1NDhaOURyNVk2VzRYWlRRK1o1TmtjWUlXZ20vSDlYWXZoZW90MWszTVp4OVp3YS9mVjF1YTY5QloycDNEdjk5dmdXLy9iaXBsR2ZqT1lRYW80UDIyWjlHK0taQy9MV3FMNzErQmdCLzhjWFh6VUtsWFBrNVNFZi82KzkvZ1YzODZFTGt3K0p2Zk9wNDdIcmtIUG85Q1V2QldNOFJqS1hwSkhZRGRzaFI3N1RVTnBvTjJuQ0V1bkFaUjJoRFNHUDR2L1VXd25XK1MvalhOb1hDTUljdkFyVTdCVjBVcUl1UUlYVzB1cGlnL3Q2WFVWdHlXbzU2bTNTRU1NWDVhczV4Z0h5N1BLb1VONlVMMUYxVWl2dVlVdHltY3ZodCsyMkVPY2d3UVYxMFpnSHlkWkhEZjcrK2dmQUhmelBVQjd2RjkzLzNGSVJ2L2JaZnlhQ3pFVEViZnQ0M3dZcmROV3lFbktiamV1UDhGeitmQzdaanlJcllEUmk0SEhVSGFJSjBkaVFsL003MER0THFwRXJJNFhkSXR4Q3YwQ2dYYllqUmVSaWpIbzI1aHZTTHJRbnFnaW1MMmhKWkJYem5LTFdDTjBNOTZqR0oxSVljL3Z0NUMzSGY4NmxTM0FMcHZPZGpoWmdXY1UvUE9FYThnd3BIU0crL21lTjBQeU8yRXZXQjBVSWk0TG9Sd3JGRTREVldDeVdubE9Nc0V5alBLaGM0WDdYODRabjN2OUFHeW1tRTRraWVaeEthRll4VllyODZhYUZrcUhkYWs1Z04yU0dIOElZN3NpUDRUbmdadHhuUE9rSzQxM2FDOENPaWtpYW9SNnVHN2hqK2MxakViY1k5eGtqck5SN0R0NmVJbE45Q3I3QkpZYVpSQVozQ2RLWVFzNGtNOVd5SG1ETDQ3ZnB4M0dZQXFMYzFrN2pOV0t1RWIxdnZBNlAzRklRanZhSHZTaW51Tmk1Q1RyUHlzNDJRWDkxVDF5KzZsVi9kaHNXYW1BeDRsTkFLeHpzU2pyZnZTcVN4MDJxamhHL3pjZHhtOUhJVGFVN25LYUJiRkk0eHZITmNOc25nMzhQWUkwZGRaZkR2ZFdyZi9Reis4NUhpNjVvaGJvZFdhK3JqV0NsdUc2VlMzRWVVNG01VElPN0JnM1d1d1grdllzaFI5ek95U0cxbzZnZzlEOVNlS2dpLy85c2V5WkRHRjB5S1cvMWxIcjRvdFh1U1k1VmIvV1Uwd3BNOTQ2VzJVNC9sQ3RMYUNLZnNCbnlITUkvY2pxNnVJYzJSalcweXBIdUVkQ21EYitOWU1HYU8rRk5qdFl3eHpNOWhDdWVPbnBVajNIbFdmZHhFbkRaT29YT0FQa2Y4ejYvR3VZd0c0ZnQyQmZ4bk9BdWN0NGtKd2hlRkV3eHYrNWpEdjRkSFhWWStPMEk0N3RlV3pUNy9sOTlmTFgvK1l2WFdhdk9TY2tib1hheTA5ajkvOCtWVjRKUjN6L3h1bFBOSng1L2s3eG5rS0tFVGpwZGhmNllVYXNsUlh6bHg2QW9NNTZJekdZYjEyWlM2b0ZDSjlNNWprWlpqT085dGhqVGJXbUJZSGNkWUY5NlpLc1dOZVhHWkREcnZlK2pSd1FMcEZvTkxFNFNiWFhNRHd6N2ZldG4rVnM0V2hBL0p0T1dNZVJLWHpUMFVib0Q1aGpoS3FIR3dJY053aW9UUUNneXIwOVZFQmoveWRCUzNHVHVsMkFuZkpvTk01OFlnalV1K2E4dVEvbnVjSWMwMkZraS9JNzNPTFlSL0xiV0tuTEZTM0ppNVowcHgxOGt4bk0vd05laS8zemVSL2o2NWlRbGFGb1ZuQzhKU3FpVm5HS1c0Tzh5cndBbk5qdDgxVkFGeXJESTdmdTlpa3IvbmM3bEFuSkNNVXR3TTlaWGhjcVVjUTFOZ09EdXNMam9kelF0RWFyUXR0QXo5YjRqdEVPYzhuaGd5cEhudTI5SU5wUGM1TEREYzdWSUcvNXFHWktIVFg4a1I3N09oY2MyTktjSWRpTXFROXZkK0hjMlJ1MWhUcXJWTTBLSnY4V3hCK0xadmZhUVk2WFZBWGNQSHRHbmZGOUN0L3ZKUHYvRlN0MzZ4SVJ0cDNWWWoxUTd4SmtZNS9oaHAzbGNydEFMRDdYUzFNVUdhMzRGSjdBYjBVS0wvRktNVEhNWW9JVkRmcGlBMVk2VDNPY3h3R05zbGFmdDJUOEt4UXN5UTl4NHNrTjZCbGwweTZCek0yTGRpY0dtQ2huMkwxUkhDVXFNbEMrdW0xeG5GZkNGenJIS0I4d0gzL28xQmk5NDF2M2RWNXUvNVhDa1VLd1NMTUordkNlcjduUjNoc0VZTkN4eFdwMnVDWVYrQk5FVlgwTzg3NDNBNG80U0E3d2NjUlc3RFdha2RLTWx3V05zbFNUUG85SlBHQ2pGajVMU0llKy9Cb1poQXRtYloxMkp3YVlJR2ZZdlZndkM4VmtzUTZRanI3VnR2Q0owMytFVnN2djZCNTd2QUtjM3FMM2V2amMzNnhUcEpiY2UvU3hVd1Y0NzZSc2QzRmorUEErWVBMY2RoZHJxdVliOTNUS0ZsNkgrTzhna09aNVFROEs5WEhyc1JLN0xZRFRqakdvWTNxcElLQjUyQ0owZjQ5MFJqdXVoTUllYStrcnIyeEFTSHNjL2RlZjVscUJGQ294aDd2WFF1WkZNcHhuYUtzV1BJOC9kKzdqaDJJMXFJTlhLUXd4L0Z2d1ZnanZybXJXV2s5bWdZMm5rTmtsSThYMnJJSnVBb1lSc1pobm1ocnhER1NHOEVkV2kwdmt1aHA0Mk9GV0llMG5hbXJ4TDkrendGaGpjUTBjZlcrK2plQndCdis5WkhzbTBMQ2JBTkg1TmtHajRtcVZLT2Y1Wlo4NWlMa05NS3hyK1N2L2V6dVdBOFRSYmgzL04xU3ZnTzNHM3NSNEY0NkFWUmhzTXVpRFZ3bExDZENkSWFKVXhCaHZBWFl0bEhCanA5c2JGQ3pFMEt5RytmRGNMZmUzRG8raHdFeUJDdUdLd0FYQWR3R2NDRk5mK3V3dTlqakhJN01tejVtKzlmL0Y5b3R1QnpmL1UyZSsram83UDN6d3ZCUmNnWm10RU0vdFQxbDdzMUQxdklkUjR5K0Evc0JhRjQycTRqdmNLclJGMGtBbjVqOVBqaS95cENlOW9vRWVjSXZFTjltNEhsMU8vbm9ON3hGNEhiazhPL2YxY0Q1OTFYWS9qWDBuVmMzOEVmdmU5YldKckZ2N3VvdjRzRzY5dFZydngvSHY0em1QZk0zOFkxK0E0TWViR20wdHFWZjh0KzAzbjQ3VktPWVJidWowQytNNTdEZjBlTWNOeDFORVlqdFM2NHM4OG02TDVkUDRMdWZyMkNmMDluMk4yK2F1WG5IUDd2dWdLZGc4SWwvUDV3ZHZhSisxY1cwR0lWWTIramZYR1ZkY3lheDF6Z2ZKcGNvRHpsdWZkKzl1ak8yMTk3RWloZkg5WGlYeG0xRmR1Vk9GMGd6dUMvSHpPa2RVUXlROWpwR3pQNEs3cFZhUFk2bFBEbmpZd1JwaE4yaExwOVEyUlFGOXJMcXhNL2dMb1Rtd2RzU3diL3ZrMTd4RGhCKzUyMFJmMTlxOUJ1RzFxZCtSL3dIWmdyOEg5TG0zWjBNVUcvSW5xZjVBaDdvR3FLK3J2dmRpeWI0L1MyYVFobTBObldQNHd3L2FLeFFzeXBRa3hOQnY2enVkclhYaDZvS0FPMlk0ejJyMTBPdldueEZmeEFRZFZ4ZlFzL3crc0VmcHVqVVJqZXdKcHR5N0lnZkVBNDJTcXJHRHNwWC8zWTJ0R3pKNkcza2RhNkJjUW1ac1BqVmlIWHRYUHYvZXpzenR0ZnF4RmIybFg0bTZZUHhYang3d2JxRHV1amlIYS8wR2NkUWI5SWNQQkhwMC9RdnFOYkxmNWRoZThzaHhneHVBbmduSElPS1E1MWtUMXJzSHdPL3psOEdHRkdZQytpWDZmTG9ka29vVnZrMGZoT0dmaFJ1NnVMZGh3Snh6OXJqT0YxVk5leGkzOE85MTc4N2FIRi8yN0wraUhPcVhUb3RtMnk4Ty9SRkhWSGR5TFdLaDBPdnIwVDRiaGo2TStxeUNHLzNaOGgvUU12RHUyMjcyUDRiZTVFcVQxTFhiYnJXZ2VlbDFNL0pUajR3bkFLK2R1UDVmRDdqdVBWQis5YmVWS0xhZm00Wmw3Tm5GWXg5aVp1eldNMmNCdUFlaHFMcEF5akpPK0p0WTZCUHlJMFJEbjhodUVKeEwyMVJRNzlUdGNNdnJnNlJ2K2Q3M1FSUzNzRUpjY3dPbmRYNFYrUHkyaCtwVHdMdi9OOEVINkt1SlZ1MkJsajlEL1Nlb0xONzdlRi8vdWZDLzk2bUo2NXRuR0xIQTlDOTNXTGRYKzN2Z3o4ZTNVQndBaitzM2tCd0NYNDcvL3F2K1Y1UEdaRHJCejYzOEVaWkxaTkZ2NHorQ0RpSCtEYlJXT0taQTc5ZzB0amhaaXBUeGU5anZiYjk5bGkrWE10MXVsaWpIYmI5Ukx5STVnTy9qdDNJaHdYOE4vcEM1QS9NSGZQeU9PeUlDeUZFNjNhTklybEZIT3VqZitYWDNpZFprNnJHSHNUYy9hQlo5NzNRaHN5bjdMaTNQcytjeHc0WjFmSEdQNGxvM1BVdDdhNGhiRFRQalNMUVFlL1k3b0UrZTNPQ2ZRN1h5bGY4WEVHdjhNL1FiL1h0bHJFbWZac3p5NWx6L1VkN3IwU29FWGQ4Wm4yak4rV2dlN25yOFN3TG00MGhYODlIb1F2bUN1Qm1FUGNOaG5vZFZDbFZORHBOMTFSaUxsSytpQ0pRN3A5QndQL09UcEc5OCtuaGY5OGE1NlBYTFpZVnZyNzdMRDlnSktVeTVEZHYyUTRNOFBrdnNVVlJqVVo1ZmlidUVoNXo3S3hHeUJvVTNGdkZYTmVPL2UrejVTSzhTVmRSdnBIWlpzYXcxK3Q5QW5vSHgzUEZYTTQ2QnhkVzJXaHUwUElrZVlvb1VaSDlqSjBSOXNmMnIzSVRzZW90M25YNFR0TVU0RzRYVG40ejU5VGlsOHF4WlZVb1I3Qk1JSnhNK2lkOHVHZ3YyMjZpclF2REhUMjRJcUVzVUxNcFF6eUk1QlQ0WGhTWnBEZHIwMmg5MWtzV2l4WEN1Y09VUXd1U1JlRnB3NXUzQWY5NFhXbkhIK3QyN00zbU1BcE4xM0V4aXJtTklxeDE3RXRINWR5Njl6N1BwTXA1NURnRUhiakVFSUJQMy85TnZRNmhoT2x1QTdoM2cvdFhLbU5Fa3J2bUZZZEs4WXVoT0lzcDJzZUk0MkRqdzYrT05jZ1VVUnJ1Z3E5S2NkajZJMlFodG8yVFpIdTFZcW5DakV6NkJXRkduRlRuQzVhUVdkR3pSUTZuOFdtMnlqcDBXUHRVd08wYytaWStVemZCK1hwSUovOXE3ZFY2eDcvVXZXV3RZOEhZQ0xsRmZmMUR6emZiWGpLS0tXMFNuRjN5ZUFMa2lGdzJMK2lFUERGNEczbzNCOVBhNHBQNkJGYkI3MlJtaHpwak5SY2hmNVI3YXZRMmQ2VVFuRm1TTzg3WGtGbjZsbWhFRk9DZy82MHlJdEtjVU52bTA2UTVraVVnODVuVnV0OWs0NXJrTjUyeEVMdjRCTGdQNHVWY015aXdUSVpaQXY2Q25HbVpEdklqclErKzVrT01VSVlRN1hsT2FlU2NUNDNLbkUzY3gyZjAyRFZNNHhRbkh2L3AwUGVrcUFQaC9UUDMraHFESCtPNFZnd1hpWVVhOVVKNHB5WDRhQzNNMDNoQWg4VndueXVIZUpQTHhvaWplbTJwVUxNdmh6MEQ3eGwwQmtSbWlGT2NhWjFrS1V2alJHeXNVSk1RUDY3a09Mb29NYkk0Rm5TMi9ZTXUvc1I0d2JMdEJGejFOMUFiaHN5d2VKMXVXL3JZcjNOSzkzNFNYRWJIamRLK2JUaWJ2VFU5WmRYNng2L2UyMXNBelZoY3U3OW56NEtsRXZDVllUWnVJYVd3WThVM2hDSXBWSGtXTVM5Nm1zRm5RN2ZXQ0ZtR3c1aHowZXFvSE1QeGt3aFppb01kUFlOdVVMTVBrSk0xUm9yeEhTSWQwNWZ6TnpiekNCZnFHYVFmLy9Ha045MlRJWGo5VFZGbUw2bGhmemZYdXg0WG5KMGQ0YjRJN3VTZlp3UzhBWGhlY0dnWjdsdFQ4NzFPc3BHS2U0MmR0MkQvL1RyTDNWaG03SDNicHg3LzZjbnNSdlJ3Z3h4cmo0WXdoSDgrWVZaanhpbFJFUE91STc0UmZoVmhUWmtpRnNVUG9Md0l3d2FSOUJMaFpncGVVd2hacTRRczZzWndteFBOYzZkZkFSeHQwMFYwcnlpcGNiM1hIcDZwM1M4R2VMdnA4NEtlU0JWWXp1MXpWZ3dsc2JGa05xeWtOc09YZ1QwenlGOGNzZnpSaW52cHF0aHF1WDg2c2N2V28yNFc1Z3R6MjI2d0UxMzg1MGRRU09lYzdPYjV6N3dxVEpndnI0YzZudERWVkZiSW04Q2YyNWgxbUhkc3VONjIxaWtVWHc3NkxRajVnVStUaUxrbkVYSU9YU1ZRc3hjSVdZWER1Rkd1VXJoZUE1cG5FWVFjL2JFSmxPRm1HUGhlS1Z3dk5TbWkwNFI5b0RmRExJRmNkbnh1YllzMHVuSFNSWFZKYUErWlRUUzBZLzUxcnpiaXNXdXR1WFRvdkYzYkdOM1BPOEN0R0hWclhNZitGUVJPR2RmQnZWTmtHZFJXeUtyUUxmcG82VnNNd0NrY2VSdVNhTXRwVUxNSnFhSXM1MXprUCt1UEVjNFhtcU1Rc3hjSVdZWG9VYllNc2ovelZPa01TSmtrRTZIZHNsQy9udWVRYTRvTENEN2VYQklydzhRWTk5WkJjcFRDc2FhQ2NicWF3YVpiVW9PSUxzUHVodDZveGc3cGJ5NzhsVUtPYTFDekNISkFOd2VZRkVJMUpkMFBvZitOL1JPeFFUdGkwS04wYTZwUXN5dUxPSmNUVTFENk9rOXEzYk5OR21yRUk2WEdoZTdBVW9jd28yd0ZRb3hVeG9SU3FrdFN4cmJHS2xwbnRMbnVrK0Y0L1ZsRWFlL0xqK2JiVDNKdmthb05qZFZDY1VwdEF0QzIvTjUyc3h1ZWM0cDVOdjFKVEFLT1hmSkFOeitsbC82blNKQ2Jna1cvbHl6NThKUGc1ckZiSXlBSTdRN0VsY0k1NThodmM2d1JpZW5WSWk1alVQY3oyWVZNZmRRbWRnTlVEQkR1TzkzSVJ6UElxMzNaQmE3QVd0TUlmLytqb1hpbEVKeGxsSXJ5R2VSOGhyQldOdG1maFNDZVNyQldCS2tEcGlXcWxOR1AvdlhQMkIzTEhKWEkrK2ZQL2FHYXN2VFZpR2xVWWpaaDRtUU0vUVVWZ0RBYVBoRjRkSVVmdFJ3V1J4T2tWNXgwMFRUaTh6a0RaZHJJN1VqZDRET3pxTlFpTGxORlRqZldUWnkvaUZ5c1J1Z0lPUW85UVBDOFNyaGVIMDVwTmR2QWVSSHpqTDBMd3B6eUc1ekRkSjc3V1B0TzQxZ3JHTExjNWxRRG9mMHRxMlZVSndIN2hjS2RLL2RGeUdKeFNyRTNGVU1PZW1FWC8vQTh5dnBtRHZZd1BuYXlPQ0x3a3RmKzhrM1ZwSGIwcGVEM3lsTzRRdkRjdkh2SW9ZeDFTMkhIeWs4YnJDY05LTVFzeThELzU1bWdqRWxZelVoUFdXekxSczV2NVFDL3IxYi9yOTBIdkx2YVNFY0x3V3pnTGtLNFhpcEhxd3FJcmZockVmZzl4K1NMcUxmWjJjczA0eG5wVFk2Q01UYmQ3b0FPVXJoZUxlRjQvV1ZDY1hKOVFyQ2VEdHhFeUduM2Zyc0NFOGkvajNFK3JJN25qY0IyckJOQnVEMnQzendrNWUvOWhOdm1rWnVpNlJxOGU4WS9tOHM0ZWZEbDBodlo3NTBCYnZQamN3VjhsWUtNU1VZeU82VVFsOXAxQVRPTjNRWi9IZXpoSCt2Y3FSelVaYWhxbUkzb0NjYnV3RnJ4RDdRczQ2RmY2OUx3WmhqOUxzeXJmVHRKcWJDOFNUWTJBMFlpQXo3ZTl1aVhIUEtxQkZhcGkybkVITVhHelRiN3RIWFhjOXJjQkZ5cm5Qeld6NzR5VW5zUmloeDhFYzZyOExmd3VLNThGY3N2WTYwT2t3WmRoL2x6WVZ6V3VGNGtrenNCdlJrWXpjQWFYMisxOG5oUC9PM0FYeGo4ZjgxK001REhxbE4reVQwQ0ZzaEhLOFNqaWZCeG03QUJ0SWphQm02SDVEUElIK0ZTaWNZVDRLSm5MOVNqbDhxeDk4WHFnVmhrM1BLbkVMZVhURnRoSnpTN0xZbm4zbmZDN2MrMzhWVDczeDVKUjFUaVVHYUo4eHJjS2hIRHk4QUdNR2ZoM2lDK0J0NTZhdXk3V0lENTJ0RCt2emFURGplTGlad3ZpRXBBZHdDY0FmK0tydGx6TWJzTVJzNFh4WTRYd3dtZGdNMm1FSytUOVYxbEc4czJRaWtPVjNVeFc0QXBTSDJDS0dHcmRNZy92THpyN1hTQ2YveDR4Zk5qa1hFYzZibTdyVkxWZXcyd085SUxuenRKOTdrSXJjanBobnFFY1J6aTU5bkVkcVJZL2pUcEZOVnhHNEFvWVFmQmJ3TmZzNURzTEViMElPSjNZQU5YT3dHYkRFVGpqZEJ0eUpmY3Jxb3crRWNyS1lCMGl3SW5XTHNvYkhDOFVKUG43R0I4M1V4L2RwUHZ2SHlnUmVEWjFuNDBjTGxQUSt2SXV4N3VlMWN0OURud2NWVXhXNEFpY25nUndSdmc2T0IxSXlMM1lBQjByaEorcmpET3FWZy9xbGdMRWtwWHZDSUlsQXJDRC96NVIrb2RpMXo2L1piZGk3VGdVYk1iVXpnZkUwWndWaFdNSmFHNmRkKzhvMTlUaG8vQkJhK09Ed0hQNzIwQ3BDekRKQ0RLSlF4L05UUWNkeG1IS1FxZGdNb0tBUDV2bFhiMGI0eFpLY09wemhkbE9oWnF2Y2hUSmdWak9VRVl6VmxHeXpqbE51d1RoVTY0WnpGWUJjVmZGRjRBYnJGZm9ITk8xVE52S25KWXplQWVwdkFqd3htY1p0QmREQ2tSd25IYVBmOWxaekZZcER1NEFFUkFMMkNzRktLMjRScHNJd1Z6TmNrbGhITTF6U25wRlNuRkV6di9OUWJXQXgyVjhHZmF6aFZ6RkZzZVB5dVlzN1U1TUx4bkhBODJtNEM0R2JzUnRCZ0ZiRWJNRkF6eUcvcnhrckw3c0xSUVVxZVZrSG9XaXhySlJQLzJXTnZiSk5id3M2TzdmLzV5RXRjZ0hZY0dnTi9UaHoxNCtEdjBhVDFXdVpLY1ErWmlkMkFBeklHaTBIcUo0dmRnQTN5MkEzWXdVSCtJaXhOcDQwV2tIMTlwb0t4aUZSb0ZZUnRibmhxQmZNNndWako1dno2THoydmFyQ1k1S2llYmJoY3FKRkVBK0RDblo5Nmd3dVU3eENjUUdlbmxTdkVYS2NNbEtlTDg3RWJRSjNrWURGNHFJeHd2Rnc0bm9ROGRnTWFrQjVaRzZOWmdUNFd6RGtEWjNYRVpHTTNZQ0RjL1ZxQmxlTHVZaG91WnlQa0hESWJ1d0VySElETExBWlZYRVc0RzJrYmhaZzUwdnFzTHVYQzhheHdQRnJ2SnNLUDdsakl2TDhGMGgyWkdnSW5IQzlIZXQvYkluWURHcWpnWDdkY01PWVl1dzkrU3Q1dWd0TkY0N0xDOFNyaGVLa3c5OE52K0RMcHdNTHhwQVUvZjJudVAwU2xRQ2dyRUdQSUx0LzU2ZGViMkkzWVV3N0FkWVFaRlhFS01RdWsrZjBvaE9NZDB2bVhzWlRRSFhWMjhQdUV4K0gzbDVWd2ZONFdveDhuSEs5RWVoM0pvY3hjZUFUQURjRjRGN0c5SU13aHQ4MTI0TDBIWTNQQzhTNGp6WDVHYi9kQnAzaXpMWmFWekIvODRpZFBmdUppRlRpbGJiYlkzRWtsZk9xZEw2OGFMdHAwdWE2dTMvbnAxOCtVY3h5NldhQThsVUxNRk85dFdDckVOQW94NmJSclNuRXRmSWZpSFB6OVFVK1FYcUZBN1U1N2FTTEY0cXVNM1lDR3BzTHh4dGcrQ0RJV3pEVVZqRVhkR09GNHBYQzhaS2ljUS9qcEwvK0FiYnp3Q04vVWFNTWVjdzJYTTRwdENHOE9jK2VuWDM4Y3V4a05aYkViMElORHVNK09GWTQzRm80blFYTHEwWkpWaUVtMUhEbzcvU25xcS9vNmhmZ2t4d3JIR3lPdC9VS0JZWnhEQ1BqdnlsUTQ1bmpMYzVJSEZqbGROQTFHTUZhS0I1NUZhQlNFVmlGbVU2YmhjazRrMjd6VjN5cVRVLzdJNVM2MnhiSk9xUTBPL21qNkVHVHdONitleEcxR0x5NVFua280WG83MHpvc1pDOGR6MkxlRFBlbVpLTVNjd284TU9vWFlKTThveEJ3cnhPenE0ZGdOYU9reDRYaWJEdFJsa0h1ZkRMaXRUb1VSakRWR1dnZDN4TndIK1dtV1ZqaGVHNjdoY2tZb24yMnhiT2hDVG9wdHV1RGRhNWVNVWh1dTMvbVoxelZ1UjJUTEMxSGN4TENMd2hBMHZoTlhGR0oyTlliOFVmaEtPQjdkUy9vSWNBVmZETkp3R0lXWUtSVmhrOWdOYUdrRzJiN2xHT3M3OVdQQkhCd2RUSWRrblpNaHJZTTdZalJHQ0UzTDVTdkIzRll3VmhNdWNENGd6cFZVWTZydS9NenJUbUkzb3FFeFRtOG9obG9VNW9IeXpCUmlUcERPVkNpTjRqVDRlZElIcUJTT2QxMDRIb1ZSQ2NjcmtjWU1oZ21HT2NLaGNRdUtzeVFQQmswRlkxRS9sWEE4clhQTW83b1B3a1hOQ1BIT0NmeXozMzJqRFpsdkZHZlV6elZaNkpuM3ZjZ0s1V3ZiQVhWQ2VaZUdjbVE5eC9xcmM5N2M4SGlxTXNnV1ZHYkxjeFk2Qnk1UzJGaVgwRGtQYmFZUWsycUZjRHdManVvT2xjYkJGOG1yWlhhUklZM3RZeGRUNFhqcnBvMk9oV0xQd09uaEtiR1FIZlhQTWN5RC9WdHBYR1ZVT3A0R0Z5R25GWXJqaE9Kb01ZS3hoamhWZEowSmdDZVF6c2pWTmhQaGVHN0g4elBoZklEL0d3cUZ1RzFvSEFRdzJKK1IvMVJsd3ZFcTRYZ1V6a3doWm9tNFZ5azh3akQyUSt0WXlMNG5ZNXgrTGNhUSsvNXp1bWg2cE4rVEd4am1TUHRHR2xOR25mTHlHOHlycGt2KzFlZGZhMlJ5dHRyWlc0bUVYLytsNXhtSk9DMkV6cmZrTU1kSnBOeHRIV0gzVHI2QUx3ckh1azNwVFhxYVk3WGorVWVFOHkzRnVLbjQwZzNvZExyWXlkQlhDTWVMZGMvSUlsTGVmV0tnY3dBMjFyYXB3SEJIQjVjMHA0MUtUUmQxNEV5T0ZNMkU0MlVZMXV5dm5lNzc2RmV2VkpJQlAvVTNQOWdxM3EwL2Y0dVJ6RStuR0lFWVRubjVUYTdlZWZ0cnBXSnB5dEY4SjVzQnVMWDRsK2swcDVkamhKc3V1bVNoTTRwU0lNNzByQW44QVFJTk02VzRWTXRpTjBEQUdQdnhkNlJncWhBelIvaU9aQWEvM3htNkdXU0w5TlVML1l5RllzNkU0cEFzQy9tK3hoaSszNVNLU1orVlZlNURHSWs1Z0p4dDh6bUJuRzFqU0p4WGFlKzgvYlZUZ1RnaGRDbnV4dkMzcGpnU2Jrc2ZZOGdmUFRZTmw5TWErWm9nYk1lcmdGNFJPZ1duaTFJektWMXBkK2kwdGsxamhOczJaUUJ1WTdoVFJjK2FDc1lxVU4rdUtCZUtxVFhyaGZyVCtENWZRL3p6Q1RQNHZtaXZhMVlzQzhLcWYzc0F6S09lTDlIMllqYXViMEp6Yzl3NHh2Lzl5RXVxdnZrUTRmekJwOTc1TWhNNko0WnpWYjVqZEorYWxjRVhEeW5jczdDRVR1ZWs2VVVacHRBcmRpWUkwL0dhd0hlNk1xWDRuQzQ2VE9jRDU1c2c3amxxKzhaQTc4RHZCUHJicGd4K3UxUW81d2xKdXVBYVErNDdZekdNNjJnY3FpbDAraG8zRVcra3NJRC9qbzhYdjAvUXNVOHBQVUxvT3E1bmUyZHVkNU40b1ArWDF2VmNmeWc1MjNKOTE3ZkRHQjBzSURPaWxzTnZUSmFGWVNZUXM0MGo2QlV5c3hiTGFoNEVtRUQzb2o3SDBEMHZxQUl2VGhLS0VZNVhJdHgzT2tmOHExanVJODBSbnduMHRrMGwvSDZsVUlnZGs0WHM5dkJoeU4wamtxT0Q2ZFBxYTF4RCtKSDRJL2p0UjNIbThVNjNQRnNXaEZLWFYrNDZYZEFLNUphSTBZWUpuSy9MYlM3NnZxOG0wRHFyaHJKQmxUNnltNk11REc5Qy95aC9DYi94MHVwQXp0RHU0TUFVdXQvaEFuN0RlU3dZczF6RTFMNVF3MVhsK0ZSend2RXloSmtCa0NIZGM1T0hib3BoYlpzeStPMjY1b3lGMkNSblRCU1FLNXBuUW5GSXp4UjYzK2NTOHYyTWJYbTI5ZDl1b09YbmVsa1F1aTR0V2tNcXpyNXlzUnZRa291UWN4b2haMXZIMER2cW1xR2VmcmdzRHNlUTJiR3Z4cjROM2FLenl3NWIrNTZUR1h6eDlnMzB1NERPQlBWcldQUnUxWFluNEJTa2tJeEN6R3ZRN1pobjJMOXBnYW5SUG8waGcvK2NMTTh0enpyRXlGR2ZobkFrMHFwMFRaRmVmMm9HbnVjOUZKcDlqUXoxZC9rWWN0ditEUFdNZ2liYis2emhjcys2Zi9HL2FkZXVqYVRpdFBhbnYvZW1xdVVxcm1mS0xxTnZCbjA2NGZQZ3I2L3JzSTd0a1c5bTMvNmFQdXVIVUNMY3BidHpuSjRQYnVFL1EwK2l2aVM2dy9ydlhZYjZSUGtjL3BMYXBYZ0wxN1BvZHFTMFdxdzNGbXZKZWhuOGUzZ04vclY3RFBYcldaMVpOa2Q5MFlIbGE1Z3B0Mi9KWVRqbjArNExCLy81elFWalp2QTc1Z3VRNzhUbThDT0RoWEJjT20wS3Y3M0lsZlBrOEVYZERmaHQwZU9ML3gzdTNjNFhPTDF0TDVUYmxwb1o0cDkvditxeDJBMmd4aXJvOXpWeTFQMk1DblUvbzJvUm8xajh1NGh1Zlk4TWZ2L3dJQnJzZTVZRm9XMlpaSk91Y1F5Q253Zy9laExwM3hQdUxLZTgvRm10cHdEZmZjY2wrOEE3TzEvZE92VU5hb2E0OTUzSkYvL0dFZHZRUko4aTVqTENGbDBGMHUxSVhVWjZSOEVQUVFYNWptWUJYeFJlaHR5QjB5UG9qejVTN1NyQzNycWhSTmdEa0VQekNOSXBDQjJHTWJ1SmFpSDdHaVZPMXpnRzlRSDkxWDcyK1VWN01zajFTM0kwUENCNUh3Qjg5S3RYckVUV1QvM3REM2FOMC9ZS29XZVpudXNQSmFkdHVieFJhSU9tV2V3RzdCRGlDUEhRV2ZUYk1Ub0FseVFhTW5BblNQLzdzSyswRGt3VjhEdm1ZL1RyaEV6Z3B5UGQ2Qm1IMnBtQjM4bVVHS1RUeDVuRmJnQzE1cUIvbXNvbUJYeUJPRVk5aW5nTjlSVnZDNFY4T3djelZxOHlhbm9tdEQzWDc4TU5KS2Z0ay9DWkR6NnYxL3F0ZFo2aU9yY2RWcHJabjMyTjY1WXZHSWw3TE80N2lRMXNoY09lS21uQUM4bkVOSVBlUGlWRGZSN3I4a3B3K1k1MWN0UzNLRml1dDJzZDBzRlIrN1NrY2hHNlZOcEI3Y3pnRDc0ZWdqRjJGSVgzci96c2VpYXpQZGNmV203WFlaMjcwbzFRNWpxdVo5Ryt3NUw2ZEZHZ0h2bUtPVzAwWlRQSVhRNzhHTUFEU0dkS1VDZ09mbW9IeGZVSTlLZnFUWEQ2ODIxd2VwdWJJZDNweklmS3djOWd1QjI1SGVUTkVIK2szQ0tka1VwcTd5ckNYUTA2dGduOHdNYkp1aWRYUndqNzNxTEE5bGkzNnBtN1M2SFZLNmU1T1RaOTF1K2c2ckNPN1puVDlWeS9qU3Bncmo2bWlEZk5JR1VXOHErTDVQbFdRK0NnYytFUmF1OEU0ZCtIQXZXNUppWDZGNE91NS9xMFhvWERuc0dRRW9mNDB6VTVPamg4VjNFNGZZMGIyRkQ4cmhhRXRtZVNvWTErN2IxbjN2c2kyMmY5cDk3MU10TngxYlo1cmYzWjVLOHV1bXFLaGxkdE9oQU8vcWk1VTRoOUFZZXhvWFk0bkw5MUNCeUczZW0zNEVVdU5CMkRyMjhxWWhka3M4ajVxVCtIdzlyL25sLzNvR1JCYUhxdTMwYzFoSHp6ZnErUjdiRnVhRzBQRGxRYWpWQm00SXRDRTdjWlNkQTh1dWJnTjlRenBmZ3BjRGlzbmRGUW5HQ1kyeWJBZnlmN1hxeU50cnVNWVJlRkJ2dHgvcFJCdlA3UkxHSnVrdVhnOThOVjNHYW9tMkxETlFxZUxRZy8rdFVyVmM4a0x0SzZRK0o2ckJ0NkJOWUV6TlYzdW5Jc0ZyNG9QSW5iaktoQ2RJb2MvQWlrZHA0WURIaGdJV1ZhSTkrYVp0anZBeWdwR1dwUjZPRGJ2aThIRFdLTkVnN2gyZ2ZVbklNdkNxZHhtNkZtaWkybjlxeU9FR0xlNzBpSDZicmk3TSsvci9PNlhYUC85ZWRlVTRYTUY1SHB1SjRMbUxQcWtTc0ZWK0UzSWpaeU8wSnlDTjhadW96OU9uOXpoc1A3M0F5Tnc3RE82M1RZcisvSUVBeXhLTHlFWWZWamRwbEd5T2tpNVNWOSs5YlhBUHdwRUZ2L3B2dk8vRzY3WnZxZHYvMGgxM1hkdnY3azk5NFVPbmVNbzJwVngvVmM0UFhhcm12dHo3N2E5c2lWaWdxSE0xcG9FZThvMmhUREgxRno4QWNSaGpqNmRJZ01obEVVT2d5am5mdm9Nb1p6cTVqTEdQNUIyTE1jd3UrUFpvSHpVVmhUREwrdkFkUXpySTUzTFhpMklPdzZkYS9xdUo0RUd6NWxwL3ZzNFo4Ly9KSkt0aDJxUXQxenp3VEtFNEtEN3hROGlQM2I0UzdORUg4amFSWnRHT0pGUHlvY3pvR0RmV0tROW1pdUE4OURqZTBFL3J0dDR6WmpJd2Zmdm1uY1pxaDVOSEMrMkJleklYMEdkVi9EUlcxSk54VjgrMmRORmhZYklSVFFOWGZYOWZvNGxKeGRtUmJMRHZYOHdXME1mT2RzbjA1UXR2QkhtVklhMVRvR2NBN0RPRkpyNFYrN2xJc0syczZneGM0MUlBTVdnNmt3U1BPQWowSDhBM25hS29UYnRscnM5MnRKcHgxaldBZFRIUHhNZ0ZiOWpiTUZvZW1ZWEtKVGJ3Vml0RlZGeU5uSk14OTh2dTI0YXFmM3BzOFZVZSsrNHhXdXhlS2Q4d3hBaGJvd25FVnRTWGNPL3VoWWloMWg0SFNoVlVWdHlYb1dmc004bE1LVnRuT29ENHpZcUMzeFRzQmlNRFVPYWMwVVdXNi9iZVIyaEJCcWxKQ2pnNGZIb3Q2WFQ2TzJaRE1ILzMzdjFNWlRCZUZ2L3VNVjA2TVJVWXdpakRBOU1iMVU5VmpkQ1RWRG13dVJ4UDdjcTZzUWVTS3I0RHVRNStBN2NEWmlXNXB5cURjc3gwai9jMXZCZDR5WEcwSVhzUzJBYjAvcU93L3FiZ2IvM2w1R3ZJT1pGK0FMRHhjaFArMW1FUGVBNEJUMTl2dFFUQVBsbVFYS1ErbXhxUGZ0MTVGR2Y4N0M3d3Q2OWRmT2poQUMzWTQwZGxublVKa082MVRDYldqQzlWemZORmltNnBsamFDenFMKzN5TmdvMlhuUFdtc0Z2N0o2TFlSU0NaMW5VN2I4TS8vZTRRTGtONnZkM255OWRUYlVwNnNKd0ZpamZ2azFIMzNjVjZnT0MyaDFJaDlPZlNjMWNLYkxRL3g3T2NIaXZLOTNMb2o1dEpVWi96cUxlSHl3SEcxeWZnUGV2ZWN3QUtGckc2ZFdJbGJ4bHgvWENtUSt1K0hWZFZucjZYUzh6QWZMMnpURmtNOVE3cmdMK3MvL1E0djhzWURzc2ZJZmxjWVF0bmtLWW9pN0tTdFN2Y1FHWjE5akF2M1pQSXEzWDdsSHMzN201a24rVEZZcXphcnI0bHdFWW8vNHU1ejNqV3ZqUDJHT0wvMTJMZGF1ZXVidkdrc3k3VHl4OEIvSVk5VGIvSXZwdmp3eE9iOFBicUhya1Bjc0t4dXJqVWZqdm9KYkhGR08zSWJWTnJBUmk5Q0gxZDFpQkdGM05zTDQvVjZEL1BtREp3bi9YSDRkL3o0eFEzR2ZkVXhET08xeGQ4cFAvL1llTVFGdSsyWEU5MXlQbjQyaGZoUGJKMTVXSnRLNjJVRmN5VFoxWi9EdFovSjdEYjBnS0FPZmhPd3VsVUI0SC83bGY1clFDY1llZ3d1a2RYNFo2WTUwdkhsdSsxbWNaMU51bkN2NDFOSUp0a3phTjNRQUYwOWdOYU1qaDlJR0lEUGQremg3YXNPNnlVMlJSNy94ZGo3WlVpTlBaaTVWM1NBenUzZWJucUxmekQyQjlSOUxBYjR2Y1NnelhveDBWOXUrOW1zRi9mM0tGMkE3cGJJdW1zUnNnWkJxN0FjSU1UbiszZ2ZwN3Zmei9PZGc4OEdaUTl6Y00vR2V1RW1uWkRwdEdDTnV3L1p2UlMrajhmZk4xV2I5cnNkeVZFWXBSN2xpbUVzaXpqeXcyVDMzSmNYcEhsK0hlRFV1MTQzY0t1SkdsZytiQXp4bnRabEdQQmxOL013QkhTbkdKMnFyTy9KK2tld3JDai8zamoxZHZQZjhyYldKWXNkWjA4TWYvOVUyaDg5K05zTDdybVROR3ZsMUZyTE0vdHhjM3BBL040dDd2M0N4NEs0aUlpQTRMcnk1S2UydmRSV1dBZGlORXRuOHpBQ1JlT2E5d0VYS2FIdXZhUU91MFpRTGtJQ0lpb3NNeVZvaHB3WDRMN2JGTkJhRnRFYVB2aUZrZlZaK1ZPOTVycjhzNjBUenozaGZaRHF0SnZLZlZqdWYzN2FJWFJFUkVGTmNZT3VjUGNuU1E5dHFtZ3JCRlozMXVKQm9TaVl1UTB3UmFKM1VtZGdPSWlJaG9yMXhVaWp0VGlrdVVCSWtwbzY1L013QjBtNlpvaEhLSHpPbmFydkQwZjNsKzYzVjZxZ0xrTUFGeUVCRVIwV0hJb0ROZGRJYjRGMUFrVXJXMklQellrejlldFloaEpCcnkySjk5bisyd1d1aXJiK0lmSHIza0FxZVV5R2NFWXJSeTl4MnZxRFkrT1llelAvY3FHNnd4UkVSRXRPL0cwTG1QYnlyM0hpUlNzMm1FRUdoWVJIenlmL3l3RTJsSkYvUGVSMnhNeStYNzV1dkNDTVJ3TFplM0FqbTNNY3J4aVlpSTZMQm9UQmQxMkw5NzVSSGRvMjlCV01rMG96UGJaK1V2Zi9ZMUxtUStBUGpuRDMxUDFUZUd0cWZmOVZLcm5NSW94eWNpSXFMRGtVTnZ1aWpSM3R0V0VENFpyQlUxRXlGbkd5NUNUaE1ocDVScXcrTXhQbHRFUkVTMG44WktjWGwxVVRvSTJ3ckNxc0g2MHJjT2NHMFcvdVBmLzk1S09QOHVNUW9aaWZNazI3eFBsVUMrWFV5QUhFUkVSSFFZcmlqRXRHQi9oUTdFeG9MdzQrYkh6TTYxNTFGR3pLU1pDRGxkNHlYbmM2dldpa2pzejcvS3hHNERFUkVSN1lVQ3ZQY2dVUy9iUmdpQjNhTkZScVlablVqbGRoRnl0b2xqaFhMR3lMZHVaTElTakU5RVJFU0g3V0dsdURPbHVFVEoyVlVRbWgzUE81bG1MSTNhVEcwVXpwMXNUZ0Z6MTJMaHUxcXRXTERLOFltSWlPaHdUQlJpenNEK0NoMlFyUVhoZkxUOTNMUGYvc29QRzlIV3RHTVBJZWRUdi95Q1NpQ01FWWpSaFZ2ekdDOG9RMFJFUkJMRzRMMEhpWHJyTTBKbzVaclJpZFJJbG1tNjREODhlc2tLNVpTS282RVNqR1VhUGtaRVJFVFVsdGE5QjJjS2NZbVN0YlVnL01RVFAyYXh1WGpaOUhobjh4aFRNa2VOcitMcEJMTTJMV2F0WU01VW1OZ05JQ0lpb3NITG9EZGQxQ25FSlVyV3JoRkNZUE9Ja1pWcnhyTk1pMlVyaGZ6Ym1NRDVBTG5YdUUwY3FaekF2UnRVYTMvK1ZXY2ZJeUlpSW1wcnJCVDNVYVc0Uk1scVVoQnVPdWRMKytJakpPU1o5NzdZTmwzMjZYZTl0UEd5dTl6OWhWZVlNdytKeFNZaUlxS0Rwblh2d1VvaExsSFMrb3dRR3JsbWRDS1YzelpjcnMwVlVIY3hFWEttWU4vK0hpSWlJZ292aDcvL29EU09EdEpCMmxrUWZ1S0pIek5ZUDVkNjNXTjkyYVlML3JmZi8xNnAvSTF6Q25JUmNqWlJ5WWVzYjNreGozOFFnWWlJaUladm9oUjNxaFNYS0dsTlJnaUI5WVdDa1d1Rzk3dC9ldGsyVzNMZWNEbFJRODlwQkdOMXpXc2p0WUdJaUlqMmg4Yk42Q3V3bjBJSHFtbEJlTTk1aEwvMWxSOTJzazFweFRKbmF5NXd2bnZjL2ZsWEdzMzRSRVJFdFBjSytDbWowamhkbEE1VzF4SENzNzhQbVcyNG5KTksrUDgrOUQyVlZDeGhHaGNLc2dDQStWNTlab2lJaUNnT2pZdkpPUERlZzNUQUdoV0VOLy9oUnl2bGRxd3lEWllSdXpqSmx6L3pHdHRrdWIvL3JYdXVtS251cVY5K1FSVTZwNEpsa1dsak5vS0lpSWoyd2xnaDVnenBYdCtCU0YzVEVVTE1WMFlGUjdwWGkzU0tzUTlaay9lc1VzelAyNVFRRVJGUkh4UDRHOUpMNDNSUk9taU5DMEtNOE1qS2IwYThKZTJFemE4dzNYRyt1L0MxMGpranNZdi9xNGh0SUNJaW91RzdxQkRUZ24wVU9uQ05DOExwMy8vb0RNQ0RBTTQ5K25jL010TnFVRU5PT0o0Vmp0ZUUyZkc4RGRBRzlaeDNmK0dWVXdBWDd2N0NLeXZwMkVSRVJIUXdNdWhNRitYb0lCMjgrOXNzUFAzN0h6Rks3VmoxT0lCeXh6SldPS2ZGOWl0V0dlRjhUYmpROFo1KzkwdXRjRTRBQUl0QklpSWk2aWtEY0YwaDdsUWhKdEdndENvSVUvRkhmL0JtR3pqbE53UG5BOWJjNnFNbkl4eVBpSWlJS0JRTDREaHlHNGoyVXZOekNBK2JVNGhwRldMMlVjVnVBQkVSRVJFUmhaVmlRZWkyUHF0elB6dTc0M21qa0hQWFZUYzFjaElSRVJFUkVUMHJ4WUxRUk1pWjRpMFJuSEE4dStONUk1eVBpSWlJaUlnU2wySkJ1SXNKbmZEdmZ2c1ZWZWljRUM0SW4zblBpKzJPUldLY0owbEVSRVJFUkJFTnNTRGNsOEtsMnZiazNSc3ZNR0dhOFN3WE9COFJFUkVSRVVXV1lrRm9lejdmaGR2ODFOd281RXVSaWQwQUlpSWlJaUlLSzdtQzhIZi85TExkc2NpdTU3c3dXNTV6Q3ZtMm02c1ZaMXB4aVlpSWlJaG9nSklyQ0J0d2dmUFp3UGtBdmI5eFcxeWpsSk9JaUlpSWlCSTF1SUx3ai83d3pTWmt2cEhTRlVqLzVkZGVYRzE1Mm1uazNPYnBkNzhrZUU0aUlpSWlJb29yMVlMUUJNN25BdWZiNWNuQStWemdmRVJFUkVSRWxJQlVDMEszNFhHamtleHZQdlBxelhIbjI2OEdPaVFqNFBFTlQ1bVE3U0FpSWlJaW9qU2tXaEJ1NG1JM1FKamQ4TGdKMkFZaUlpSWlJanBRUXlzSWJZU2NSakcyM2ZDNFU4eTVqZ21jajRpSWlJaUlFcEJxUWJocGFxUEtCVjRBWUw2aENQdktKMSs1OW5GbFdqazN4ZjJtVWo0aUlpSWlJa3BZcWdYaEprNHh0bG56bUZYTXQ1RTllYUZSQ3IwcHJsUEtSMFJFUkVSRUNSdGFRV2dDNTdQSzhZMXkvS1pNN0FZUUVSRVJFVkY0cVJhRUxuWURBbGszVmJNSzNRZ2lJaUlpSWpwTXFSYUVwdVhqV2phZHl6aFVkc1BqSm1BYmlJaUlpSWdvRWFrV2hHdjk0UisrMlNtR1Q2WDRzMXFCbjM3UGk5ZkdmdnJkTDNGYU9ZbUlpSWlJS0YxREtnaHRoSnhHT1g1MTlvR1I0cFZVTjNDQjh4RVJFUkVSVVNKU0xRak5tc2RzNERZQWgxRXNtZGdOSUNJaUlpS2lPSklzQ0gvdlR5NjdOUSt2ZTB5YmpaQ3pVbzV2bE9NVEVSRVJFZEZBSkZrUWJ2Q2tjdnpxN0FOZitlUXJyWEpPcHh5L1NVNFRvUTFFUkVSRVJKU0FJUldFb1RudEJQL3lxeTgyYXg2MjJublBXSGZyQ3lJaUlpSWlPZ0RKRm9UemUwZnNUT0FtaE00SEFMaHo4a0liT0tVTG5JK0lpSWlJaUJLUmJFRzRob3ZkZ0QxeDl2WWFKa1lqaUlpSWlJZ292aUVWaEZZeitOOSsrdFhWbVllTVpyNFZ0djV4ZnJZTlJFUkVSRVJFYWxJdUNOM3FMMy93UncvYndQbERuVnRuQStYWnhFVE9UMFJFUkVSRWthUmNFTlpYRlowZnpDMG5BdVNjdTlYZm52N0ZsN2oxeXhFUkVSRVIwYjVMdVNDY29SNGxuQWJLZWJMNDN5N3loL0FJZ0dYUisyaUFmRlBVaGVkSmdIeEVSRVJFUkpTby93L1pMTVlCUktvenVRQUFBQUJKUlU1RXJrSmdnZz09Ij48L2ltYWdlPjwvZGVmcz48L3N2Zz4g';
+    return tex;
+  }
+  const bandMat = new THREE.MeshStandardMaterial({ map:makeBandTexture(), metalness:0.15, roughness:0.6 });
+  // Fixed absolute height — NOT scaled with HEIGHT — so the label band (and
+  // the text/logo painted on it) keeps its proportions when the body is
+  // stretched taller, instead of the same texture being stretched vertically.
+  const bandH = 0.52, bandCenterY = HEIGHT * 0.12;
+  const band = new THREE.Mesh(
+    new THREE.CylinderGeometry(
+      radiusAtY(bandCenterY + bandH / 2) * 1.008,
+      radiusAtY(bandCenterY - bandH / 2) * 1.008,
+      bandH, 96, 1, true
+    ),
+    bandMat
+  );
+  band.position.y = bandCenterY;
+  device.add(band);
+
+  // ---- top: mounting face (Ø118) — 4x M5 bolts on 104 mm PCD, centre datum ----
+  const topY = HEIGHT / 2;
+  const topBevel = bevelRing(RADIUS_TOP); topBevel.position.y = topY; device.add(topBevel);
+  const BOLT_PCD_RATIO = 104 / 118;
+  for(let i = 0; i < 4; i++){
+    const a = i * (Math.PI / 2) + Math.PI / 4;
+    const bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.02, 16), boltMat);
+    bolt.position.set(Math.cos(a) * RADIUS_TOP * BOLT_PCD_RATIO, topY + 0.001, Math.sin(a) * RADIUS_TOP * BOLT_PCD_RATIO);
+    device.add(bolt);
+  }
+  const centerCross = new THREE.Group();
+  [0, Math.PI / 2].forEach(rot=>{
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(RADIUS_TOP * 0.16, 0.004, 0.006), darkMat);
+    bar.rotation.y = rot;
+    centerCross.add(bar);
+  });
+  centerCross.position.set(0, topY + 0.002, 0);
+  device.add(centerCross);
+
+  // ---- bottom: transducer face (Ø114) — 4x DVL heads, M3 ring holes, orientation mark ----
+  const bottomY = -HEIGHT / 2;
+  const bottomBevel = bevelRing(RADIUS_BOTTOM); bottomBevel.position.y = bottomY; device.add(bottomBevel);
+  const bottomCap = new THREE.Mesh(new THREE.CylinderGeometry(RADIUS_BOTTOM * 0.98, RADIUS_BOTTOM * 0.98, 0.025, 96), capMat);
+  bottomCap.position.y = bottomY - 0.012;
+  device.add(bottomCap);
+
+  const transducerPositions = [];
+  for(let i = 0; i < 4; i++){
+    const a = i * (Math.PI / 2) + Math.PI / 4;
+    const r = RADIUS_BOTTOM * 0.5;
+    const x = Math.cos(a) * r, z = Math.sin(a) * r;
+    transducerPositions.push(new THREE.Vector3(x, bottomY - 0.027, z));
+    const head = new THREE.Mesh(new THREE.CylinderGeometry(RADIUS_BOTTOM * 0.34, RADIUS_BOTTOM * 0.34, 0.03, 48), darkMat);
+    head.position.set(x, bottomY - 0.027, z);
+    device.add(head);
+  }
+  // M3 optional mounting-ring holes, offset 45° from the transducer heads
+  for(let i = 0; i < 4; i++){
+    const a = i * (Math.PI / 2);
+    const hole = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.018, 12), boltMat);
+    hole.position.set(Math.cos(a) * RADIUS_BOTTOM * 0.86, bottomY - 0.014, Math.sin(a) * RADIUS_BOTTOM * 0.86);
+    device.add(hole);
+  }
+  // yellow orientation/warning mark near the rim
+  const mark = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.001, 3), markMat);
+  mark.rotation.x = -Math.PI / 2;
+  mark.position.set(Math.cos(Math.PI * 0.85) * RADIUS_BOTTOM * 0.86, bottomY - 0.013, Math.sin(Math.PI * 0.85) * RADIUS_BOTTOM * 0.86);
+  device.add(mark);
+
+  const cableCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(RADIUS_BOTTOM * 0.92, bottomY + 0.03, 0),
+    new THREE.Vector3(RADIUS_BOTTOM * 1.22, bottomY - 0.09, 0),
+    new THREE.Vector3(RADIUS_BOTTOM * 1.1, bottomY - 0.33, 0),
+    new THREE.Vector3(RADIUS_BOTTOM * 0.85, bottomY - 0.54, 0),
+  ]);
+  const cable = new THREE.Mesh(new THREE.TubeGeometry(cableCurve, 32, 0.027, 12, false), darkMat);
+  device.add(cable);
+
+  device.rotation.x = 0.02;
+
+  const floorY = bottomY - 1.15;
+  const floor = new THREE.Mesh(
+    new THREE.CircleGeometry(2.6, 64),
+    new THREE.MeshStandardMaterial({ color:0x0a1a2c, metalness:0.1, roughness:0.9, transparent:true, opacity:0.5 })
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = floorY;
+  scene.add(floor);
+  const floorGrid = new THREE.PolarGridHelper(2.6, 8, 8, 64, 0x2f6f8f, 0x1a3a4a);
+  floorGrid.position.y = floorY + 0.001;
+  floorGrid.material.transparent = true;
+  floorGrid.material.opacity = 0.22;
+  scene.add(floorGrid);
+
+  /* ---------- sonar probe: fires from each DVL head, echoes off the seabed ---------- */
+  const pulses = [];
+  const probeGeo = new THREE.SphereGeometry(0.045, 16, 16);
+
+  function ringMesh(){
+    const geo = new THREE.RingGeometry(0.05, 0.15, 48);
+    const mat = new THREE.MeshBasicMaterial({ color:0x33f3fd, transparent:true, opacity:0.75, side:THREE.DoubleSide, blending:THREE.AdditiveBlending, depthWrite:false });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.rotation.x = -Math.PI / 2;
+    return mesh;
+  }
+
+  let firing = false;
+  function fireProbe(){
+    if(firing) return;
+    firing = true;
+    transducerPositions.forEach((pos, i)=>{
+      const sphere = new THREE.Mesh(probeGeo, new THREE.MeshBasicMaterial({ color:0x33f3fd, transparent:true, opacity:0.95, blending:THREE.AdditiveBlending, depthWrite:false }));
+      sphere.position.copy(pos);
+      scene.add(sphere);
+      pulses.push({ mesh:sphere, kind:'probe', fromY:pos.y, x:pos.x, z:pos.z, start:performance.now(), dur:950 + i * 35 });
+    });
+    if(window.playPing) window.playPing(880, 0.12, 0.05);
+    setTimeout(()=>{ firing = false; }, 260);
+  }
+
+  (function autoFireLoop(){
+    fireProbe();
+    setTimeout(autoFireLoop, 2600 + Math.random() * 1400);
+  })();
+
+  /* Tablet-friendly touch: a quick tap on the model fires an extra probe
+     right away, without a button and without fighting the drag-to-rotate
+     gesture OrbitControls already owns (a tap moves very little and lifts
+     quickly; a rotate drag moves further or takes longer). */
+  let tapStart = null;
+  renderer.domElement.addEventListener('pointerdown', (e)=>{
+    tapStart = { x:e.clientX, y:e.clientY, t:performance.now() };
+  });
+  renderer.domElement.addEventListener('pointerup', (e)=>{
+    if(!tapStart) return;
+    const dx = e.clientX - tapStart.x, dy = e.clientY - tapStart.y;
+    const dist = Math.hypot(dx, dy);
+    const dur = performance.now() - tapStart.t;
+    tapStart = null;
+    if(dist < 12 && dur < 350) fireProbe();
+  });
+
+  function updatePulses(now){
+    for(let i = pulses.length - 1; i >= 0; i--){
+      const p = pulses[i];
+      const t = Math.min(1, (now - p.start) / p.dur);
+      if(p.kind === 'probe'){
+        p.mesh.position.y = THREE.MathUtils.lerp(p.fromY, floorY, t);
+        p.mesh.material.opacity = 0.95 * (1 - t * 0.3);
+        const s = 1 + t * 0.7;
+        p.mesh.scale.set(s, s, s);
+        if(t >= 1){
+          scene.remove(p.mesh);
+          pulses.splice(i, 1);
+          const echo = ringMesh();
+          echo.position.set(p.x, floorY + 0.02, p.z);
+          scene.add(echo);
+          pulses.push({ mesh:echo, kind:'echo', start:now, dur:1100 });
+          if(window.playPing) window.playPing(420, 0.18, 0.04);
+        }
+      } else {
+        const s = 1 + t * 9;
+        p.mesh.scale.set(s, s, s);
+        p.mesh.material.opacity = 0.75 * (1 - t);
+        if(t >= 1){ scene.remove(p.mesh); pulses.splice(i, 1); }
+      }
+    }
+  }
+
+  function resize(){
+    const r = wrap.getBoundingClientRect();
+    if(r.width < 2 || r.height < 2) return;
+    camera.aspect = r.width / r.height;
+    camera.updateProjectionMatrix();
+    renderer.setSize(r.width, r.height, false);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function loop(now){
+    requestAnimationFrame(loop);
+    if(section.hidden) return;
+    controls.update();
+    updatePulses(now || performance.now());
+    renderer.render(scene, camera);
+  }
+  requestAnimationFrame(loop);
+
+  if(loading){
+    loading.style.opacity = '0';
+    setTimeout(()=>{ loading.hidden = true; }, 500);
+  }
+})();
+</script>
+</body>
+</html>
