@@ -1634,7 +1634,6 @@ requestAnimationFrame(()=> moveTabIndicator(document.querySelector('.tab-btn.act
       scene.add(sphere);
       pulses.push({ mesh:sphere, kind:'probe', fromY:pos.y, x:pos.x, z:pos.z, start:performance.now(), dur:950 + i * 35 });
     });
-    if(window.playPing) window.playPing(880, 0.12, 0.05);
     setTimeout(()=>{ firing = false; }, 260);
   }
 
@@ -1676,7 +1675,6 @@ requestAnimationFrame(()=> moveTabIndicator(document.querySelector('.tab-btn.act
           echo.position.set(p.x, floorY + 0.02, p.z);
           scene.add(echo);
           pulses.push({ mesh:echo, kind:'echo', start:now, dur:1100 });
-          if(window.playPing) window.playPing(420, 0.18, 0.04);
         }
       } else {
         const s = 1 + t * 9;
