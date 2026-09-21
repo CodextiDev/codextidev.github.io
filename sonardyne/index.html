@@ -127,11 +127,17 @@
   .overlay .logo-mark{ height:54px; width:auto; margin-bottom:46px; pointer-events:none; }
 
   /* family hero + sonar ping (splash) */
-  .family-sonar{ position:relative; width:clamp(340px,66vw,600px); height:clamp(340px,66vw,600px); display:flex; align-items:center; justify-content:center; margin-bottom:14px; pointer-events:none; }
+  .splash-title{ pointer-events:none; margin-bottom:6px; }
+  .splash-title h2{ font-weight:900; font-size:clamp(1.5rem,3.6vw,2.4rem); letter-spacing:-.01em; line-height:1.15; }
+  .splash-title p{ margin:6px 0 0; font-weight:500; font-size:clamp(.95rem,2vw,1.25rem); color:var(--ink-soft); }
+  .overlay .logo-mark{ margin-bottom:clamp(20px,4vh,46px); }
+  .family-sonar{ position:relative; width:min(clamp(340px,66vw,600px), max(220px,44vh)); height:min(clamp(340px,66vw,600px), max(220px,44vh)); display:flex; align-items:center; justify-content:center; margin-bottom:14px; pointer-events:none; }
   .family-glow{
     position:absolute; inset:4%; border-radius:50%; z-index:0;
-    background:radial-gradient(circle, var(--cyan) 0%, var(--accent) 45%, transparent 72%);
-    opacity:.3; filter:blur(36px);
+    /* soft edge comes from the gradient itself — no filter:blur, which can render as a solid
+       square while the overlay crossfades */
+    background:radial-gradient(closest-side, var(--cyan) 0%, var(--accent) 40%, transparent 100%);
+    opacity:.3;
     animation:familyGlowPulse 2.6s ease-in-out infinite;
   }
   @keyframes familyGlowPulse{ 0%,100%{ opacity:.2; transform:scale(.94); } 50%{ opacity:.55; transform:scale(1.08); } }
@@ -486,6 +492,10 @@
 <div class="overlay" id="splash">
   <button class="splash-btn" id="splashBtn" aria-label="Continuar"></button>
   <img class="logo-mark theme-logo" src="assets/logo/sonardyne-logo.svg" alt="Sonardyne">
+  <div class="splash-title">
+    <h2>Conheça a família SPRINT-Nav</h2>
+    <p>Discover the SPRINT-Nav Family</p>
+  </div>
   <div class="family-sonar">
     <div class="family-glow"></div>
     <div class="family-ring"></div>
@@ -795,22 +805,6 @@ const PRODUCTS = [
       applications:['Sustained free-inertial XL UUVs','Surface vessels','Seabed survey'] }
   },
   {
-    id:'dp', image:'assets/products/sprint-nav-dp.png',
-    depthRatingM:100, headingAccuracyDeg:0.04, pitchRollDeg:0.01, distanceAccuracyPct:0.02, powerW:15,
-    pt:{ name:'SPRINT-Nav DP', short:'DP', cls:'Posicionamento Dinâmico',
-      tagline:'Desenvolvido para posicionamento dinâmico em águas rasas sem GNSS, mantendo a posição da embarcação em obras costeiras.',
-      dims:'Ø225 × 346 mm', weightDisplay:'23,9 kg ar / 13,1 kg água', dvl:'Syrinx, bottom lock até 230 m',
-      headingDisplay:'0,04°', pitchRollDisplay:'0,01°', distanceDisplay:'0,02%', powerDisplay:'15 W nominal',
-      stationKeeping:'< 2 m em 24 h',
-      applications:['Embarcações DP2/DP3','Survey costeiro','Parques eólicos offshore'] },
-    en:{ name:'SPRINT-Nav DP', short:'DP', cls:'Station-Keeping',
-      tagline:'Purpose-built for shallow-water dynamic positioning without GNSS, holding vessel position through coastal and nearshore construction work.',
-      dims:'Ø225 × 346 mm', weightDisplay:'23.9 kg air / 13.1 kg water', dvl:'Syrinx, bottom lock to 230 m',
-      headingDisplay:'0.04°', pitchRollDisplay:'0.01°', distanceDisplay:'0.02%', powerDisplay:'15 W nominal',
-      stationKeeping:'< 2 m over 24 h',
-      applications:['DP2/DP3 vessels','Coastal survey','Offshore wind farms'] }
-  },
-  {
     id:'nav', image:'assets/products/sprint-nav.png',
     depthRatingM:6000, headingAccuracyDeg:0.025, pitchRollDeg:0.01, distanceAccuracyPct:0.02, powerW:25,
     pt:{ name:'SPRINT-Nav I/S/X', short:'I/S/X', cls:'Padrão',
@@ -825,20 +819,6 @@ const PRODUCTS = [
       headingDisplay:'0.04° (I) / 0.025° (S) / 0.01° (X)', pitchRollDisplay:'0.01°', distanceDisplay:'0.03% (I) / 0.02% (S) / 0.01% (X)', powerDisplay:'18–25 W (DVL off/on)',
       applications:['Workclass ROVs','XLUUVs','Sparse-LBL survey','SDV operations'],
       tierTable:TIER_NAV_EN }
-  },
-  {
-    id:'sprint', image:'assets/products/sprint.png',
-    depthRatingM:6000, headingAccuracyDeg:0.04, pitchRollDeg:0.01, distanceAccuracyPct:0.03, powerW:15,
-    pt:{ name:'SPRINT', short:'SPRINT', cls:'INS Standalone',
-      tagline:'INS standalone flexível e econômico, sem DVL embutido — funde as fontes de apoio já existentes no veículo: USBL, LBL, DVL, GNSS ou profundidade.',
-      dims:'Ø205 × 260–280 mm', weightDisplay:'18,5–22 kg ar / 11,5–14 kg água', dvl:'Externo / fornecido pelo veículo',
-      headingDisplay:'0,05° (300) / 0,04° (500) / 0,02° (700)', pitchRollDisplay:'0,01°', distanceDisplay:'0,05% / 0,03% / 0,02% (com DVL)', powerDisplay:'15 W nominal',
-      applications:['Guiagem de ROV','Survey independente','Veículos com DVL/USBL próprio'] },
-    en:{ name:'SPRINT', short:'SPRINT', cls:'Standalone INS',
-      tagline:'A flexible, cost-effective standalone INS with no built-in DVL — it fuses whatever aiding sources already exist on the vehicle: USBL, LBL, DVL, GNSS or depth.',
-      dims:'Ø205 × 260–280 mm', weightDisplay:'18.5–22 kg air / 11.5–14 kg water', dvl:'External / vehicle-supplied',
-      headingDisplay:'0.05° (300) / 0.04° (500) / 0.02° (700)', pitchRollDisplay:'0.01°', distanceDisplay:'0.05% / 0.03% / 0.02% (DVL-aided)', powerDisplay:'15 W nominal',
-      applications:['ROV guidance','Independent survey','Vehicles with existing DVL/USBL'] }
   },
   {
     id:'m', image:'assets/products/sprint-nav-m.png',
@@ -872,7 +852,7 @@ const PRODUCTS = [
   }
 ];
 
-const FAMILY_ORDER = ['dp','sprint','u','m','nav','ffx'];
+const FAMILY_ORDER = ['u','m','nav','ffx'];
 PRODUCTS.sort((a,b)=> FAMILY_ORDER.indexOf(a.id) - FAMILY_ORDER.indexOf(b.id));
 
 let LANG = 'pt';
@@ -1194,13 +1174,19 @@ function initSonarField(){
 
   function resize(){
     const r = wrap.getBoundingClientRect();
+    /* While the Family tab is hidden (other tab open, app not yet shown) the wrap measures 0x0.
+       Shrinking the canvas to 1x1 then would get it CSS-stretched over the image, and every ring
+       would paint that one pixel — a giant translucent blue block. Keep the last real size. */
+    if(r.width < 2 || r.height < 2) return;
     w = r.width; h = r.height;
-    canvas.width = Math.max(1, w * dpr);
-    canvas.height = Math.max(1, h * dpr);
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
   resize();
   window.addEventListener('resize', resize);
+  /* re-measure when the tab becomes visible again (or the layout changes without a window resize) */
+  if(window.ResizeObserver) new ResizeObserver(resize).observe(wrap);
 
   let pings = [];
   function addPing(x, y, strong){ pings.push({ x, y, t0: performance.now(), strong: !!strong }); }
@@ -1218,6 +1204,7 @@ function initSonarField(){
      instead of ending the animation for good. */
   function frame(now){
     try{
+      if(!w || !h){ requestAnimationFrame(frame); return; }
       ctx.clearRect(0, 0, w, h);
       const maxR = Math.max(w, h) * 0.62;
       pings = pings.filter(p=>{
